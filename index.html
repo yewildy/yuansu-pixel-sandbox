@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>元素像素沙盒 / Yuansu Pixel Sandbox</title>
+  <meta name="description" content="网页版落沙物理沙盒 · 30 种元素 · 零依赖 · Canvas2D">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <div class="brand">
+        <span class="brand-icon">▦</span>
+        <span class="brand-name" data-i18n="title">元素像素沙盒</span>
+      </div>
+      <div class="hud">
+        <span class="hud-item"><span class="hud-key" data-i18n="ui.fps">帧率</span><span id="fps" class="mono">60</span></span>
+        <span class="hud-item"><span class="hud-key" data-i18n="ui.cells">粒子数</span><span id="cells" class="mono">0</span></span>
+      </div>
+      <div class="top-actions">
+        <button id="settings-btn" class="icon-btn" type="button" data-i18n="ui.settings" data-i18n-title="ui.settings">设置</button>
+        <button id="help-btn" class="icon-btn" type="button" data-i18n="ui.help" data-i18n-title="ui.help">图鉴</button>
+        <button id="lang-btn" class="icon-btn" type="button" data-i18n="ui.language" data-i18n-title="ui.language">中文</button>
+      </div>
+    </header>
+
+    <main id="main">
+      <aside id="palette" aria-label="elements"></aside>
+      <section id="canvas-wrap">
+        <canvas id="canvas" width="320" height="180"></canvas>
+        <div id="hover" class="hover-readout mono"></div>
+      </section>
+    </main>
+
+    <footer id="bottombar" data-i18n-aria="ui.toolbar"></footer>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <!-- 零依赖 · classic script 顺序加载 · 全部挂到 window.YS（file:// 可直接运行） -->
+  <script src="src/core/balance.js"></script>
+  <script src="src/core/rng.js"></script>
+  <script src="src/core/elements.js"></script>
+  <script src="src/core/grid.js"></script>
+  <script src="src/core/thermal.js"></script>
+  <script src="src/core/transitions.js"></script>
+  <script src="src/core/reactions.js"></script>
+  <script src="src/core/movement.js"></script>
+  <script src="src/core/biology.js"></script>
+  <script src="src/core/wind.js"></script>
+  <script src="src/core/engine.js"></script>
+
+  <script src="src/render/palette.js"></script>
+  <script src="src/render/renderer.js"></script>
+
+  <script src="src/ui/i18n.js"></script>
+  <script src="src/ui/locales/zh-CN.js"></script>
+  <script src="src/ui/locales/en.js"></script>
+  <script src="src/ui/locales/ja.js"></script>
+  <script src="src/ui/toolbar.js"></script>
+  <script src="src/ui/save.js"></script>
+  <script src="src/ui/help.js"></script>
+
+  <script src="src/main.js"></script>
+</body>
+</html>
