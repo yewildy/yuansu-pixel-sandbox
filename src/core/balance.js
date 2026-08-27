@@ -18,7 +18,7 @@
     AMBIENT_T: 20,
     MIN_TEMP: -200,
     MAX_TEMP: 2000,
-    HEAT_COUPLING: 0.12,     // α —— 已按审查 F01 修正（勿改大）
+    HEAT_COUPLING: 0.005,     // α —— 已按审查 F01 修正（勿改大）
     ENV_RELAX_EMPTY: 0.10,
     ENV_RELAX_GAS: 0.004,
     ENV_RELAX_LIQUID: 0.0005,
