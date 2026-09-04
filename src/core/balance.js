@@ -42,7 +42,7 @@
   var WATER = {
     EVAP_SURF_THRESH: 60,
     EVAP_SURF_COEF: 0.0003,
-    EVAP_P_AT_100: 0.02,
+    EVAP_P_AT_100: 0.025,
     EVAP_SLOPE: 0.001,
     EVAP_P_MAX: 0.50,
     FREEZE_T: -2,
