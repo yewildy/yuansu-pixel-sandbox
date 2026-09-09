@@ -64,7 +64,7 @@
   var METAL = { MELT_T: 1500, MELT_P: 0.02 };
   var SALT = { MELT_T: 801, MELT_P: 0.02, DISSOLVE_P: 0.02 };
   var SAND = { GLASS_T: 1700, GLASS_P: 0.03 };
-  var LN2 = { BOIL_T: -196, BOIL_SLOPE: 0.0007, BOIL_P_MAX: 0.50 };
+  var LN2 = { BOIL_T: -196, BOIL_SLOPE: 0.0005, BOIL_P_MAX: 0.50 };
 
   /* §14.4 燃烧 / 反应 */
   var FIRE = {
