@@ -303,3 +303,23 @@ body.high-contrast #canvas { border: 2px solid #FFFFFF; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+/* ===== UI 主题 token 落地（对齐 ART.md §3）===== */
+:root {
+  --ys-bg-canvas: #0B0F17;
+  --ys-bg-toolbar: #12161F;
+  --ys-bg-panel: #141824;
+  --ys-bg-panel-alt: #1B2030;
+  --ys-hover: #222A3A;
+  --ys-selected: #2A3852;
+  --ys-border: #2A3244;
+  --ys-border-strong: #3A4457;
+  --ys-text: #E6EAF2;
+  --ys-text-2: #A6B0C0;
+  --ys-text-disabled: #6B7688;
+  --ys-accent: #FFB020;
+  --ys-primary: #2E78DE;
+  --ys-danger: #D93A2B;
+  --ys-success: #4AA03C;
+  --ys-focus-ring: #7CC8FF;
+}
