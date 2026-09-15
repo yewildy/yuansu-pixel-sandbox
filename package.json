@@ -1,0 +1,17 @@
+{
+  "name": "yuansu-pixel-sandbox",
+  "version": "1.0.0",
+  "description": "元素像素沙盒 / Yuansu Pixel Sandbox — 网页版落沙物理沙盒（零依赖 · Canvas2D · 60 UPS）",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "test": "node tests/run.js"
+  },
+  "keywords": [
+    "falling-sand",
+    "cellular-automata",
+    "physics-sandbox",
+    "canvas2d",
+    "zero-dependency"
+  ]
+}
