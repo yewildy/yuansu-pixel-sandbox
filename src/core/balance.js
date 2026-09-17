@@ -74,7 +74,7 @@
     SPREAD_DOWN_BIAS: 0.6,
     SMOKE_P: 0.5
   };
-  var ACID = { ETCH_METAL_P: 0.05, ETCH_STONE_P: 0.02 };
+  var ACID = { ETCH_METAL_P: 0.08, ETCH_STONE_P: 0.02 };
   var TNT = { RADIUS: 6, CHAIN_MAX: 8, TEMP_BOOST: 400, P_FIRE: 0.6 };
 
   /* §14.5 生命 / 流量 / 风 */
