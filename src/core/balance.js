@@ -55,7 +55,7 @@
   var LAVA = {
     SOLIDIFY_T: 700,
     SOLIDIFY_SLOPE: 0.01,
-    SOLIDIFY_P_MIN: 0.03,
+    SOLIDIFY_P_MIN: 0.02,
     SOLIDIFY_P_MAX: 0.50,
     STEAM_P: 0.80
   };
