@@ -15,7 +15,7 @@
       n: n,
 
       element: new Uint8Array(n),
-      temp: new Int16Array(n),        // 官方温度场（整数 °C，§1.1）
+      temp: new Float32Array(n),      // 官方温度场（浮点 °C；见 ADR-0001 / 审查 F17）
       nextTemp: new Float32Array(n),  // 导热工作缓冲（浮点，避免逐 tick 截断漂移；见 ADR-0001）
       age: new Uint16Array(n),
       latent: new Uint8Array(n),
