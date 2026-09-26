@@ -41,3 +41,5 @@
 ---
 
 [1.0.0]: https://github.com/yewildy/yuansu-pixel-sandbox/releases/tag/v1.0.0
+
+<!-- v1.0.0 发布说明定稿 -->
