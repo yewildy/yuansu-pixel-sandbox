@@ -12,6 +12,7 @@
   var Elements = root.YS.Elements;
   var RNG = root.YS.RNG;
   var ELS = Elements.ELEMENTS;
+  var ID = Elements.ID;
 
   function enterableDown(selfDens, target) {
     if (target === 1) return true;
@@ -46,6 +47,17 @@
     grid.latent[i] = 0;
     grid.age[i] = 0;
     grid.moveStamp[i] = tick;
+  }
+
+  /* 4 邻域是否存在「可燃固体（不可移动）」——火焰贴其上时锚定，以便点燃燃料（见 §7 / ADR-0006） */
+  function adjFlammableSolid(grid, i) {
+    var el = grid.element, w = grid.w, h = grid.h;
+    var x = i % w, y = (i / w) | 0, t, E;
+    if (x > 0) { t = el[i - 1]; E = ELS[t]; if (t > 1 && E.flammability > 0 && !E.movable) return true; }
+    if (x < w - 1) { t = el[i + 1]; E = ELS[t]; if (t > 1 && E.flammability > 0 && !E.movable) return true; }
+    if (y > 0) { t = el[i - w]; E = ELS[t]; if (t > 1 && E.flammability > 0 && !E.movable) return true; }
+    if (y < h - 1) { t = el[i + w]; E = ELS[t]; if (t > 1 && E.flammability > 0 && !E.movable) return true; }
+    return false;
   }
 
   function stepCell(grid, ctx, i, x, y) {
@@ -121,6 +133,11 @@
     }
 
     if (st === 'gas') {
+      /* 0. 燃料火焰锚定（docs/COMBUSTION-MODEL.md §7 / ADR-0006）：
+       *    来自固体/粉末/液体燃料的火焰（latent>0）留在原地、不上升、不受风，
+       *    以便烧尽后开出 AIR 通道、成为下一层燃料的相邻火源（解决 N1 根因 R-3 时序死锁）。
+       *    自由火焰（latent==0，瓦斯/爆炸/手绘）保持气态行为。 */
+      /* TODO(N1): 燃料火焰应与燃料「锚定」、不上浮——否则来不及点燃邻格燃料 */
       /* 1. 风平流（§5.3-1 / §11.2） */
       var wind = ctx.wind;
       if (wind && wind.strength > 0) {

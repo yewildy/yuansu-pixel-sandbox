@@ -57,7 +57,7 @@
     'help.elementsTitle': '元素一覧',
     'help.closeBtn': '了解',
 
-    'el.EMPTY': '空', 'el.WALL': '壁', 'el.STONE': '岩', 'el.GLASS': 'ガラス',
+    'el.AIR': '空気', 'el.EMPTY': '空', 'el.WALL': '壁', 'el.STONE': '岩', 'el.GLASS': 'ガラス',
     'el.METAL': '金属', 'el.ICE': '氷', 'el.WOOD': '木材', 'el.PLANT': '植物',
     'el.SAND': '砂', 'el.SOIL': '土', 'el.SALT': '塩', 'el.DUST': 'ほこり',
     'el.SNOW': '雪', 'el.ASH': '灰', 'el.COAL': '石炭', 'el.GUNPOWDER': '火薬',

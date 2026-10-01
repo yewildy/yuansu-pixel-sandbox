@@ -16,9 +16,12 @@
    * 29 dither, 30 anim, 31 pattern, 32 marker, 33 group
    */
   var DEF = [
-    [1, 'EMPTY', '空', 'special', 'gas', 0, 0, 0, 1005, 0.002, null,
-      0, null, null, null, null, null, null, null, null, -1, null, 0, null,
-      '#0B0F17', '#121826', '#06080E', 'no', 1.00, false, false, null, false, 'special'],
+    /* id 1：EMPTY「空」升级为 AIR「空气」（真实参与导热/对流/流动/耗氧，见 docs/PHYSICS-AIR.md）
+     *   group='none' → 不进元素面板；state='gas'；movable=0（不由通用移动通道搬运，只由 airPass）；
+     *   density=1.2 为参考值（不进位移比较，target===1 短路放行）；k=0.05；c=1005；windFactor=0.5 */
+    [1, 'AIR', '空气', 'gas', 'gas', 1.2, 0, 0, 1005, 0.05, null,
+      0, null, null, null, null, null, null, null, null, -1, null, 0.5, null,
+      '#0B0F17', '#121826', '#06080E', 'no', 1.00, false, false, null, false, 'none'],
 
     [2, 'WALL', '墙', 'static', 'solid', 9999, 0, 0, 900, 0.10, 9.0,
       0, null, null, null, null, null, null, null, null, -1, null, 0, null,
@@ -49,7 +52,7 @@
       '#4AA03C', '#6FC24E', '#2E6E28', 'no', 1.00, true, false, null, false, 'special'],
 
     [9, 'SAND', '沙', 'powder', 'powder', 1600, 1, 0.90, 800, 0.15, 7.0,
-      0, null, 1700, 'GLASS', null, null, null, null, 0, -1, null, 0, 0.85,
+      0, null, 1100, 'GLASS', null, null, null, null, 0, -1, null, 0, 0.85,/* meltPoint 1700→1100：见 §7.7 近似说明 */
       '#E8C15A', '#F5D98A', '#B9963C', 'no', 1.00, true, false, null, false, 'powder'],
 
     [10, 'SOIL', '土壤', 'powder', 'powder', 1300, 1, 0.70, 1200, 0.18, 2.0,
@@ -105,11 +108,11 @@
       '#7FD8E8', '#B8EEF6', '#4AA8BE', 'weak', 0.90, true, false, 'dash', false, 'liquid'],
 
     [23, 'STEAM', '水蒸气', 'gas', 'gas', 0.6, 1, 0.95, 2010, 0.06, null,
-      0, null, null, null, null, null, 100, 'WATER', 0, 600, 'WATER', 1.00, null,
+      0, null, null, null, null, null, 100, 'WATER', 0, 600, null, 1.00, null,
       '#C8D2DC', '#E6EDF4', '#9AA6B4', 'no', 0.50, true, true, null, false, 'gas'],
 
     [24, 'SMOKE', '烟', 'gas', 'gas', 0.5, 1, 0.90, 1005, 0.06, null,
-      0, null, null, null, null, null, null, null, 0, 300, 'EMPTY', 1.00, null,
+      0, null, null, null, null, null, null, null, 0, 300, 'AIR', 1.00, null,
       '#444B56', '#5E6673', '#2C313A', 'no', 0.60, true, true, null, false, 'gas'],
 
     [25, 'FIRE', '火', 'gas', 'gas', 0.3, 1, 0.80, 1100, 0.10, null,
@@ -179,11 +182,19 @@
     e2.decayTo = e2.decayTo ? ID[e2.decayTo] : 0;
   }
 
-  // 按 UI 分组：solid/powder/liquid/gas/special
+  /* 向后兼容别名：id 1 既叫 AIR 也叫 EMPTY（旧代码/反应表/存档仍写 EMPTY，解析后同为 1） */
+  ID.EMPTY = 1;
+  byKey.EMPTY = ELEMENTS[1];
+
+  /* 空气专项标记（供 thermal / air 读取）：air=true 表示"背景介质"，skySink=true 表示顶部散热 */
+  ELEMENTS[1].air = true;
+  ELEMENTS[1].skySink = true;
+
+  // 按 UI 分组：solid/powder/liquid/gas/special（none = 不进面板的空气）
   var GROUPS = ['solid', 'powder', 'liquid', 'gas', 'special'];
-  var GROUPED = {};
+  var GROUPED = { none: [] };
   GROUPS.forEach(function (g) { GROUPED[g] = []; });
-  LIST.forEach(function (el) { GROUPED[el.group].push(el); });
+  LIST.forEach(function (el) { (GROUPED[el.group] || GROUPED.none).push(el); });
 
   // 快速查找数组
   var conductivityTable = new Float32Array(31);

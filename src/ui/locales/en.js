@@ -57,7 +57,7 @@
     'help.elementsTitle': 'All Elements',
     'help.closeBtn': 'Got it',
 
-    'el.EMPTY': 'Empty', 'el.WALL': 'Wall', 'el.STONE': 'Stone', 'el.GLASS': 'Glass',
+    'el.AIR': 'Air', 'el.EMPTY': 'Empty', 'el.WALL': 'Wall', 'el.STONE': 'Stone', 'el.GLASS': 'Glass',
     'el.METAL': 'Metal', 'el.ICE': 'Ice', 'el.WOOD': 'Wood', 'el.PLANT': 'Plant',
     'el.SAND': 'Sand', 'el.SOIL': 'Soil', 'el.SALT': 'Salt', 'el.DUST': 'Dust',
     'el.SNOW': 'Snow', 'el.ASH': 'Ash', 'el.COAL': 'Coal', 'el.GUNPOWDER': 'Gunpowder',

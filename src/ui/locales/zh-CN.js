@@ -57,7 +57,7 @@
     'help.elementsTitle': '元素一览',
     'help.closeBtn': '知道了',
 
-    'el.EMPTY': '空', 'el.WALL': '墙', 'el.STONE': '岩石', 'el.GLASS': '玻璃',
+    'el.AIR': '空气', 'el.EMPTY': '空', 'el.WALL': '墙', 'el.STONE': '岩石', 'el.GLASS': '玻璃',
     'el.METAL': '金属', 'el.ICE': '冰', 'el.WOOD': '木材', 'el.PLANT': '植物',
     'el.SAND': '沙', 'el.SOIL': '土壤', 'el.SALT': '盐', 'el.DUST': '尘埃',
     'el.SNOW': '雪', 'el.ASH': '灰烬', 'el.COAL': '煤', 'el.GUNPOWDER': '火药',
