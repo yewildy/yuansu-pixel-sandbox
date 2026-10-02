@@ -19,7 +19,7 @@
     MIN_TEMP: -200,
     MAX_TEMP: 2000,
     HEAT_COUPLING: 0.005,     // α —— 已按审查 F01 修正（勿改大）
-    ENV_RELAX_EMPTY: 0.10,    // 空气向环境温弛豫
+    ENV_RELAX_EMPTY: 0.0005,  // = AIR.RELAX（键名保留向后兼容）；0.10 → 0.0005 修复 B2
     ENV_RELAX_GAS: 0.004,
     ENV_RELAX_LIQUID: 0.0005,
     ENV_RELAX_SOLID: 0.001,
