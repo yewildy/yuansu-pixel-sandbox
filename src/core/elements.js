@@ -108,7 +108,7 @@
       '#7FD8E8', '#B8EEF6', '#4AA8BE', 'weak', 0.90, true, false, 'dash', false, 'liquid'],
 
     [23, 'STEAM', '水蒸气', 'gas', 'gas', 0.6, 1, 0.95, 2010, 0.06, null,
-      0, null, null, null, null, null, 100, 'WATER', 0, 600, null, 1.00, null,
+      0, null, null, null, null, null, 100, 'WATER', 0, -1, null, 1.00, null,/* 删去 lifetime=600 强制转水：消亡只由 §7.2 冷凝(T<100)+顶部逸出决定 */
       '#C8D2DC', '#E6EDF4', '#9AA6B4', 'no', 0.50, true, true, null, false, 'gas'],
 
     [24, 'SMOKE', '烟', 'gas', 'gas', 0.5, 1, 0.90, 1005, 0.06, null,
