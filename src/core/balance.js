@@ -72,7 +72,8 @@
    *  · GLASS_T / GLASS_P —— **辅路径（兜底）**：沙自身 T ≥ 1100 °C 直接玻璃化（§7.7）。
    *  真实石英熔点 1713 °C、钠钙玻璃软化约 600–800 °C；1100 为**设计近似**。 */
   var SAND = {
-    GLASS_T: 1700, GLASS_P: 0.03
+    GLASS_T: 1100, GLASS_P: 0.03,
+    GLASS_CONTACT_P: 0.02, GLASS_CONTACT_COST: 20
   };
   var LN2 = { BOIL_T: -196, BOIL_SLOPE: 0.0005, BOIL_P_MAX: 0.50 };
 
