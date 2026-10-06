@@ -152,13 +152,15 @@
             }
             break;
 
-          /* ---- 液氮 → 蒸汽 ---- */
+          /* ---- 液氮 → 空气（氮气回归大气；见 §7.8，修复"凭空造水"） ---- */
           case 22: /* LN2 */
             if (T >= Balance.LN2.BOIL_T) {
               if (lat[i] < 255) lat[i]++;
               if (lat[i] >= P.LATENT_TICKS_LN2) {
                 p = clamp(Balance.LN2.BOIL_SLOPE * (T - Balance.LN2.BOIL_T), 0, Balance.LN2.BOIL_P_MAX);
-                if (RNG.hash01(x, y, ID.LN2 * 131 + tick) < p) { el[i] = ID.STEAM; lat[i] = 0; transitions++; }
+                /* 产物为 AIR（原地写低温空气格，温度随本格保留）——不再产出 STEAM，
+                 * 否则会经 §7.2 冷凝成水 → "倒一片液氮凭空造水"（守恒被破坏）。 */
+                if (RNG.hash01(x, y, ID.LN2 * 131 + tick) < p) { el[i] = ID.AIR; lat[i] = 0; transitions++; }
               }
             } else if (lat[i] > 0) lat[i]--;
             break;

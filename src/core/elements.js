@@ -104,7 +104,7 @@
       '#8FD41E', '#B8EC4A', '#5E9410', 'weak', 0.90, true, true, 'speckle', false, 'liquid'],
 
     [22, 'LN2', '液氮', 'liquid', 'liquid', 807, 1, 0.50, 2040, 0.35, null,
-      0, null, null, null, -196, 'STEAM', null, null, 0, -1, null, 0, null,
+      0, null, null, null, -196, 'AIR', null, null, 0, -1, null, 0, null,/* 汽化产物 STEAM→AIR：氮气回归大气，消除"凭空造水"，见 §7.8 */
       '#7FD8E8', '#B8EEF6', '#4AA8BE', 'weak', 0.90, true, false, 'dash', false, 'liquid'],
 
     [23, 'STEAM', '水蒸气', 'gas', 'gas', 0.6, 1, 0.95, 2010, 0.06, null,
