@@ -309,7 +309,7 @@
             }
             var bias = dirBias(x, y, n % w, (n / w) | 0);
             var fu = fuelOf(t);
-            var spreadP = 0;   // TODO(N1): 燃料驱动蔓延尚未实现
+            var spreadP = fu ? fu.spreadP : fe.flammability;     // §6.1：优先用 FUEL.spreadP
             var pign = (grid.temp[n] >= fe.ignitionTemp) ? 1.0 : spreadP * bias;
             if (RNG.hash01(n % w, (n / w) | 0, t * 173 + tick) < pign) ignite(grid, n, tick);
           }

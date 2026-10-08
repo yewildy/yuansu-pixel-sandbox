@@ -156,7 +156,7 @@
         if (src > 0) {
           /* 锚定火焰：寿命 = FUEL[src].burnTicks（与燃料种类相关，docs/COMBUSTION-MODEL.md §6.1） */
           var fu = Reactions.fuelOf(src);
-          thr = FIRE.LIFE_BASE;   // TODO(N1): 应按燃料种类取寿命
+          thr = fu ? fu.burnTicks : FIRE.LIFE_BASE;
           /* §9.6 维持：不通气 → age 额外快进（smother，寿命缩至 1/(1+SMOTHER_EXTRA)） */
           if (!Reactions.hasOxygen(grid, i)) age[i] += FIRE.SMOTHER_EXTRA;
         } else {
