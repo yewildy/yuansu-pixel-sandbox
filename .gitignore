@@ -21,3 +21,6 @@ Thumbs.db
 # 日志与环境
 *.log
 .env
+
+# 测试产出的原始数据（体积大；用 `node tests/pairwise.js --all` 可重新生成）
+tests/_out/
