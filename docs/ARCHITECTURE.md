@@ -3,7 +3,7 @@
 > 项目：元素像素沙盒 / Yuansu Pixel Sandbox
 > 文档类型：Architecture Document（技术实现真源）
 > 负责人：程基岩（Cheng Jiyan，技术方向与主程序）
-> 关联真源：`docs/PHYSICS.md`（物理/数值，唯一真源）、`docs/ART.md`（视觉/配色，唯一真源）、`docs/DESIGN.md`（概念/UX）
+> 关联真源：`docs/PHYSICS.md`（物理/数值，唯一真源）、`docs/PHYSICS-AIR.md`（空气系统唯一真源，v1.1）、`docs/PLANT-MODEL.md`（植物生态唯一真源，v1.1）、`docs/ART.md`（视觉/配色，唯一真源）、`docs/DESIGN.md`（概念/UX）
 > 语言：标题英文，正文中文
 
 ---
@@ -49,10 +49,10 @@
    │ Core 层（纯逻辑，无 DOM，Node 可测）                         │
    │   engine.js  ← 编排 tick / 守恒计数 / 存档序列化             │
    │     ├─ movement.js    ├─ reactions.js   ├─ biology.js       │
-   │     ├─ thermal.js     ├─ transitions.js ├─ wind.js          │
-   │     └─ grid.js                                                 │
+   │     ├─ air.js         ├─ thermal.js     ├─ transitions.js   │
+   │     ├─ wind.js        └─ grid.js                             │
    │   elements.js  ← 数据（30 元素属性 + 配色）                    │
-   │   balance.js   ← 数据（§14 全部可调参数）                      │
+   │   balance.js   ← 数据（§14 全部可调参数，含 AIR/SOIL 组）       │
    │   rng.js       ← 确定性随机                                    │
    └──────────────────────────────────────────────────────────────┘
 ```
@@ -60,11 +60,13 @@
 - **向下依赖单向**：UI → Render → Core →（数据）。Core 永不 import/require Render/UI。
 - `palette.js` 属渲染层但为纯数据/数学（无 DOM），便于在 Node 测试颜色与抖动。
 - `renderer.js` / `toolbar.js` / `save.js` / `help.js` / `main.js` 允许碰 DOM。
+- `air.js`（v1.1 新增）只读 `Balance.AIR` / `Elements` / `Grid.swap`，与通用移动通道解耦（AIR `movable=false`）；它被 `thermal.js` 通过 `noteDeviation()` 单向驱动，故加载顺序在 `thermal` 之前（见下）。
 
 ### 加载顺序
-`balance → rng → elements → grid → thermal → transitions → reactions → movement → biology → wind → engine → palette → renderer → i18n → locales(zh-CN,en,ja) → toolbar → save → help → main`
+`balance → rng → elements → grid → thermal → transitions → reactions → movement → air → biology → wind → engine → palette → renderer → i18n → locales(zh-CN,en,ja) → toolbar → save → help → main`
 
 > `movement.js` 在运行时通过 `root.YS.Wind` 惰性访问对流加成，故 `wind` 只需在首次 tick 前加载（engine 之前即可）。
+> `air.js` 须在 `thermal.js` **之后**、`engine.js` **之前**加载：`(1)` engine 直接调用 `Air.airPass`；`(2)` thermal 的 `relax` 通过 `Air.noteDeviation()` 置 `pendingDrive` 标志——即「谁驱动空气」的调用发生在 thermal 内，故 air 必须先就位（实际上 engine.step 里 airPass 在 thermal 之前执行，标志在上一 tick 的 relax 阶段已置好）。
 
 ---
 
@@ -74,11 +76,11 @@ Structure-of-Arrays，全部为预分配类型化数组（`320×180 = 57,600` �
 
 | 数组 | 类型 | 说明 |
 |---|---|---|
-| `element` | `Uint8Array` | 元素 ID 1–30（1 = EMPTY） |
+| `element` | `Uint8Array` | 元素 ID 1–30（**1 = AIR（空气）**，v1.1 起为真实元素；`ID.EMPTY = 1` 为同值别名） |
 | `temp` | `Float32Array` | **官方温度场**（浮点 °C，[-200, 2000]，§13.4；**必须浮点**，见审查 F15） |
 | `nextTemp` | `Float32Array` | 导热工作缓冲（浮点，避免逐 tick 取整漂移，见 ADR-0001） |
-| `age` | `Uint16Array` | 寿命/计时器（语义随元素） |
-| `latent` | `Uint8Array` | 相变潜热平台累计 tick（§6.4） |
+| `age` | `Uint16Array` | 寿命/计时器（语义随元素）；`SOIL.age` = 含水量刻度（§10） |
+| `latent` | `Uint8Array` | 相变潜热平台累计 tick（§6.4）；**FIRE 复用为「原始燃料 id」**用于锚定/寿命/残灰判定（§9.2/§9.3，`latent>0`=锚定燃料火焰） |
 | `moveStamp` | `Uint32Array` | 本 tick 已移动标记（存 tickId，不每帧清零） |
 | `reactStamp` | `Uint32Array` | 本 tick 已反应标记 |
 
@@ -91,24 +93,26 @@ Structure-of-Arrays，全部为预分配类型化数组（`320×180 = 57,600` �
 
 ## 4. tick 流水线（§1.2 更新顺序）
 
-`Engine.step()` 每个 tick 执行：
+`Engine.step()` 每个 tick 执行（v1.1 起为 **10 步**，`airPass` 插在 `movePass` 之后）：
 
 ```
 tickId = ++tick
-1  Movement.movePass      §5   粉末/液体/气体移动（气体含风平流；自下而上 + 左右逐帧交替）
-2  Reactions.reactionPass §8   爆炸→灭火→燃烧→腐蚀→溶解→克隆/病毒（§15.4 优先级）
-3  Biology.lifePass       §10  种子发芽 / 植物生长 / 枯萎 / 病毒
-4  Thermal.diffuse        §6.1 导热 → 写入 nextTemp
-5  Transitions.process    §7   相变（读 nextTemp；潜热平台 §6.4）
-6  Thermal.relax          §6.3 向环境温度弛豫 + 暴露加成
-7  grid.commitTemp        温度钳制 + 回写 temp（替代 §1.2 的 clearFlags / swap）
-8  agePass                §4.3 寿命 / decayTo（FIRE/SMOKE/STEAM）
-9  Wind.windPass          §11  轻质粉末空中漂移（+ 对流已在 movePass 内叠加）
+1  Movement.movePass      §5    粉末/液体/气体移动（气体含风平流；自下而上 + 左右逐帧交替）
+2  Air.airPass            §5.4  AIR 专用对流/浮力/风（隔帧执行；温度驱动置换；见 ADR-0005）
+3  Reactions.reactionPass §8    爆炸→灭火→燃烧→腐蚀→溶解→克隆/病毒/水源泉（§15.4 优先级；含 §9.2 蔓延 + §9.6 耗氧、R19 出水）
+4  Biology.lifePass       §10   严格生态：种子发芽 / 植物生长 / 枯萎 / 病毒（PLANT-MODEL）
+5  Thermal.diffuse        §6.1  导热（**双轨配对系数**）→ 写入 nextTemp
+6  Transitions.process    §7    相变（读 nextTemp；潜热平台 §6.4）
+7  Thermal.relax          §6.3  向环境温度弛豫（AIR 0.0005；顶部天空热沉）
+8  grid.commitTemp        温度钳制 + 回写 temp（替代 §1.2 的 clearFlags / swap）
+9  agePass                §4.3  寿命 / decayTo（FIRE/SMOKE/STEAM）+ §9.2 燃料寿命/§9.3 残灰（缺氧窒息不造氧）
+10 Wind.windPass          §11   轻质粉末空中漂移（+ 对流已在 movePass 内叠加）
 ```
 
-**与 §1.2 的两处实现级差异**（等价或更优，见 ADR-0003）：
+**与 §1.2 的三处实现级差异**（等价或更优，见 ADR-0003 / ADR-0005）：
 1. 原第 1 步 `clearFlags()` 与第 8 步 `swap temp↔nextTemp`：改为 `moveStamp/reactStamp`（递增 tickId）+ `commitTemp()` 回写。效果等价，省去每帧 57,600 次清零 / 交换。
-2. §5.3 规定气体移动优先级为「风平流 → 浮力 → 扩散」，故气体风平流并入 `movePass`（保证「每格每 tick 只动一次」的优先级正确）；`windPass` 保留 §11.2 轻质粉末漂移。
+2. §5.3 规定气体移动优先级为「风平流 → 浮力 → 扩散」，故**普通气体**的风平流并入 `movePass`（保证「每格每 tick 只动一次」的优先级正确）；`windPass` 保留 §11.2 轻质粉末漂移。
+3. **v1.1 新增**：`AIR`（id 1）的运动独立成 `airPass`（`movePass` 之后、`reactionPass` 之前）。理由：AIR `movable=false`，不进通用移动通道；其「对流/浮力/风」由温度驱动置换实现，与通用移动解耦后既保留视觉语义又可 O(1) 早退（`pendingDrive` 标志，见 §10）。`PHYSICS.md §5.4` 为该步的权威描述。
 
 **每帧主循环（main.js）**：累加器 + `MAX_SUBSTEPS = 4`，`real` 上限 0.25 s 防螺旋死亡。
 
@@ -131,7 +135,7 @@ tickId = ++tick
 |---|---|
 | 质量（格数）守恒（移动/相变） | 移动 = 交换；相变 1↔1 |
 | 质量创生仅 CLONE / SPRING | 配额 `MAX_CLONE_CELLS=2000` / `MAX_SPRING_CELLS=1500` |
-| 唯一合法减项：气体逸出顶边 | `Movement.vent()` 置 EMPTY（温度不保留） |
+| 唯一合法减项：气体逸出顶边 | `Movement.vent()` 置 **AIR**（id 1；温度不保留） |
 | 温度 ∈ [MIN_TEMP, MAX_TEMP] | `commitTemp` 钳制（§13.4） |
 | 导热不创生/消灭能量 | §6.1 对称交换 → 守恒 ΣT（比热加权模式守恒 ΣcT，见 ADR-0003） |
 
@@ -181,13 +185,17 @@ tickId = ++tick
 |---|---|
 | SoA + 类型化数组 | 零对象数组、零 GC |
 | 空场快速跳过 | EMPTY 格不参与移动/反应 |
-| EMPTY-EMPTY 导热对跳过 | 省去大半导热配对 |
+| **airPass 驱动早退** | `thermal.relax` 探测到 `\|ΔT\|>40` 才置 `pendingDrive`；无驱动时 `airPass` **O(1) 返回**（v1.1） |
+| **AIR 双轨导热 + 近平衡跳过** | 空气-空气对 `K=AIR.SELF_K`，`\|ΔT\|<0.25` 直接跳过 → 均匀空气导热成本 ≈0（v1.1） |
+| **airPass 隔帧** | `PASS_INTERVAL=2`，运动总成本减半（v1.1） |
+| **airPass 移动预算** | `MAX_MOVE_BUDGET=12000`，满屏热时截断尖峰（v1.1） |
 | 温度场仅 nextTemp 计算 | 单缓冲计算 + 一次回写 |
 | 扫描方向逐帧交替 | 消除液体方向偏置（免费且确定） |
 | 累加器 + 最多 4 子步 | 掉帧丢步，不卡死 |
 | 自适应降级（v1.0） | 帧率不足时降子步/降刷新率（预留） |
 
 预算目标：仿真 ≤ 6 ms、渲染 ≤ 6 ms、UI ≤ 1.5 ms、合计 ≤ 16.67 ms（60 FPS）。
+**v1.1 新增硬指标**（Node/V8，320×180，best-of-7 实测）：空画布 airPass 新增开销 **≤ 0.3 ms/tick**（实测 0.178）；95% 填充 **≤ 10 ms/tick**（实测 7.3–7.8）；1/2 画布 600 °C 空气 **≤ 12 ms/tick**（实测 ≈2.3）。
 
 ---
 
@@ -202,6 +210,11 @@ tickId = ++tick
 | D5 | 液体浮力按「正下方为更轻可移动液体 → 下沉交换」实现（§5.2.4 原文表述有歧义） | 语义澄清 | 该实现自然产生正确分层（油浮水、液氮浮一切） |
 | D6 | `Uint32Array` 直写像素假设小端字节序 | 平台假设 | 所有主流浏览器/设备均为小端 |
 | D7 | 首帧未做「温度惰性跳过」与脏矩形（v1.0 计划内） | 范围 | MVP 先用全量导热/全量渲染，性能预算内 |
+| D8 | **id 1 由 `EMPTY` 升级为 `AIR`（不新增元素 ID）** | 语义变更（v1.1） | 用户硬约束「30 元素 / ID 映射 / 配色不变」；`ID.EMPTY=1` 留同值别名，存档 `version` 不升版。详见 ADR-0005 |
+| D9 | **AIR 运动独立成 `airPass`，温度驱动置换（不做气压场）** | 新增步进（v1.1） | 通用移动通道对 `movable=false` 的 AIR 无效；气压场（每格 `pressure:Float32` + Poisson 求解）成本与收益不匹配。`PHYSICS-AIR.md §7` 记为近似 P1 |
+| D10 | **植物严格生态**（接地要求 + `CAPILLARY_HEAD` 软帽 + 供水消耗 + 整簇同时枯萎） | 语义变更（v1.1） | 原「离水太远停止」改为「无根/无水即应激枯萎、整簇同死」；`MAX_HEIGHT=40` 删除。详见 `PLANT-MODEL.md` 与 ADR-0005 |
+| D11 | **燃烧耗氧落地为「消耗邻接 AIR → SMOKE」** | 语义澄清（v1.1） | `hasOxygen` 数值判据不变，语义由「存在空位」升级为「存在空气」；`AIR.OXY_CONSUME_P=0.5`。§9.6 |
+| D12 | **燃料驱动燃烧模型：锚定火焰 + 通气前沿 + 燃料寿命**（N1 修复） | 语义变更（v1.1） | `latent>0` 的 FIRE 锚定（`movement` 跳过）；寿命 `FUEL[].burnTicks`；氧判据 Chebyshev-2 仅 `AIR` 且**不穿 `WALL`**；点火扣可达氧、持续耗氧、缺氧窒息不造氧。三处实现级偏离见 ADR-0006；真源 `COMBUSTION-MODEL.md`。§9.1/§9.2/§9.3/§9.6 |
 
 ---
 
@@ -209,6 +222,8 @@ tickId = ++tick
 
 - 真机浏览器（Chrome/Edge/Safari/Firefox）下 `file://` 直接双击运行、canvas 显示与鼠标反算坐标准确性（Node 无法覆盖）。
 - 满屏复杂反应时的实际 FPS（性能预算需在真机实测）。
+- **v1.1 空气系统真机复测**：`airPass` 隔帧运镜下的对流「体感」（`PASS_INTERVAL` / `SKY_RELAX` / `SELF_K` 调参留给真机）；Node 无法覆盖 canvas/ImageData，故空画布 0.178 ms/tick 仅是 JS 侧数字。
+- **v1.1 严格生态植物的体感**：`CAPILLARY_HEAD=30`、`WILT_TICKS=300`、`ROOT_LOSS_GRACE=90` 的手感需真机确认（是否太易枯萎 / 整簇同死是否突兀）。
 - 触控（pointer events）在移动端的可用性（v1.0 增补）。
 - 高 DPI 屏下整数倍放大的观感（已按 `× dpr` 处理，需目视确认）。
 - iOS Safari 的 `ImageData` / `toBlob` 行为差异（DESIGN R6）。
