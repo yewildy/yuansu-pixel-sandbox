@@ -2,7 +2,7 @@
  * biology.js — 生命 / 植物 / 病毒（docs/PLANT-MODEL.md，替代 docs/PHYSICS.md §10）
  *   严格生态：① 发芽须着地；② 生长须根系连通地面（isRooted，有界 BFS + 节流）；
  *   ③ 生长消耗附近水分；④ 高度由供水能力/毛细极限自然封顶（CAPILLARY_HEAD）；
- *   ⑤ 断根/干旱 → 整株同一 tick 一起变 DUST（消灭"灰尘雨"）。
+ *   ⑤ v1.2.0 起：断根/干旱 → **休眠**（停止生长，不死亡、不变 DUST）。
  *
  *   字段复用（不新增数组）：SEED.age = 发芽计时器；PLANT.age = 枯萎计时器；SOIL.age = 含水量。
  *   模块级缓存（rootQ/rootVisit/wiltList/rootedCache/rootedStamp）按 grid.n 惰性分配，零热路径 new。
@@ -232,18 +232,20 @@
         var hasWater = (foundWater >= 0) || (foundSoil >= 0);
         var rooted = rootedAt(grid, i, x, y, tick);
 
-        var stressed = false, limit = 0;
-        if (!rooted) { stressed = true; limit = Balance.PLANT.ROOT_LOSS_GRACE; }
-        else if (!hasWater) { stressed = true; limit = Balance.PLANT.WILT_TICKS; }
-
-        if (stressed) {
-          if (age[i] < 65535) age[i]++;
-          if (age[i] >= limit) { wiltColony(grid, i, tick); continue; }   // 整株一起坠落
+        /* v1.2.0：植物不再枯死。
+         * 用户诉求原文：「植物，你就让他有水就可以一直往上走就可以了，没必要设置一个死亡」。
+         * 这与 Powder Game 一致 —— 它的 Vine / Seed-grown 植物压根没有枯萎死亡机制，
+         * 只会一直长（Vine 甚至能在火、液体、岩浆表面生长）。
+         * 于是断根 / 根区无水改为**休眠**：停止生长、不再累积应激、绝不产生 DUST，
+         * 一旦重新接水接地立即恢复生长。旧的 wiltColony（整株变 DUST）保留代码但不再被调用，
+         * 以免存档/外部引用断裂（见 docs/PLANT-MODEL.md §7 修订）。 */
+        if (!rooted || !hasWater) {
+          age[i] = 0;                                    // 休眠：不累积计时
         } else {
           age[i] = age[i] > 2 ? age[i] - 2 : 0;
         }
 
-        /* 向上生长：必须连地（未连地绝不生长，§4.1） */
+        /* 向上生长：必须连地（未连地绝不生长，§4.1 —— 守住"空中楼阁"红线） */
         if (!rooted) continue;
         if (y === 0) continue;
         var up = i - w, ue = el[up];

@@ -180,7 +180,11 @@
         i = y * w + x;
         if (el[i] !== ID.TNT) continue;
         if (grid.reactStamp[i] === tick) continue;
-        if (grid.temp[i] >= 180 || adjFire(grid, i)) {
+        /* 引爆判据（v1.2.2）：自身达自燃温度，或 4 邻域存在 FIRE / 达自燃温度的热体（岩浆等）。
+         * 旧判据只有「自身 ≥180℃」+「邻接 FIRE」，导致 LAVA×TNT 失败——
+         * 单格岩浆会随液体流动铺开，与 TNT 的接触只有 1~2 tick，传热量不足以把 TNT 烤到 180℃，
+         * 但现实中 1200℃ 的岩浆接触 TNT 必然瞬爆（TNT 自燃温度仅约 160~200℃）。 */
+        if (grid.temp[i] >= Balance.TNT.IGNITE_T || adjFire(grid, i) || adjHot(grid, i)) {
           grid.reactStamp[i] = tick;
           EQ[tail] = i; EQD[tail] = 0; tail++;
         }
@@ -238,6 +242,17 @@
     if (x < w - 1 && el[i + 1] === ID.FIRE) return true;
     if (y > 0 && el[i - w] === ID.FIRE) return true;
     if (y < h - 1 && el[i + w] === ID.FIRE) return true;
+    return false;
+  }
+
+  /* 4 邻域是否存在温度达到 TNT 自燃点的热体（岩浆 / 明火 / 炽热金属等） */
+  function adjHot(grid, i) {
+    var el = grid.element, temp = grid.temp, w = grid.w, h = grid.h;
+    var x = i % w, y = (i / w) | 0, t = Balance.TNT.IGNITE_T, j;
+    if (x > 0) { j = i - 1; if (el[j] !== 1 && temp[j] >= t) return true; }
+    if (x < w - 1) { j = i + 1; if (el[j] !== 1 && temp[j] >= t) return true; }
+    if (y > 0) { j = i - w; if (el[j] !== 1 && temp[j] >= t) return true; }
+    if (y < h - 1) { j = i + w; if (el[j] !== 1 && temp[j] >= t) return true; }
     return false;
   }
 
@@ -303,14 +318,22 @@
             var fe = ELS[t];
             if (!(fe.flammability > 0)) continue;
             var needsOxy = !(t === ID.GUNPOWDER || t === ID.GAS);
-            if (needsOxy) {
+            /* 热解引燃（v1.2.0，docs/PHYSICS-AIR.md §A10）：
+             * 燃料被邻近火焰烤到燃点后会自身热解出可燃气体（pyrolysis），
+             * 这一步**不需要外界氧气渗入**，故可豁免 hasOxygen 的前置门槛。
+             * 不加这条时，24×24 木堆内部 Chebyshev-2 内永远无 AIR（表面烧掉后留下的是 ASH 而非通道），
+             * 火只能在表层烧一圈就自灭 —— 实测仅烧掉 37%，配对实验判 FAIL「火离开燃料」。
+             * 氧气约束改由 ignite() 内的 consumeOxygenNear 承担：真缺氧（4 邻无 AIR）时不耗氧，
+             * 配合 §9.6 持续耗氧仍可达成密封自熄（测试 N1-8/N1-9 红线）。 */
+            var pyro = grid.temp[n] >= fe.ignitionTemp;
+            if (needsOxy && !pyro) {
               if (!hasOxygen(grid, n)) continue;                 // §9.1 条件 3（修订）：半径 2 内有 AIR
               if (fireCapReached(grid)) continue;                // 性能护栏：FIRE 格数上限
             }
             var bias = dirBias(x, y, n % w, (n / w) | 0);
             var fu = fuelOf(t);
             var spreadP = fu ? fu.spreadP : fe.flammability;     // §6.1：优先用 FUEL.spreadP
-            var pign = (grid.temp[n] >= fe.ignitionTemp) ? 1.0 : spreadP * bias;
+            var pign = pyro ? 1.0 : spreadP * bias;
             if (RNG.hash01(n % w, (n / w) | 0, t * 173 + tick) < pign) ignite(grid, n, tick);
           }
           continue;

@@ -23,19 +23,26 @@
       0, null, null, null, null, null, null, null, null, -1, null, 0.5, null,
       '#0B0F17', '#121826', '#06080E', 'no', 1.00, false, false, null, false, 'none'],
 
-    [2, 'WALL', '墙', 'static', 'solid', 9999, 0, 0, 900, 0.10, 9.0,
+    /* v1.2.0 导热系数重标定（见 docs/PHYSICS-AIR.md §13「容器传热」）：
+     * 旧的 k 整体偏低（METAL 仅 0.90，比水 0.40 只高 2 倍），玩家用金属画一口锅、锅底加热时，
+     * 热量几乎传不进锅内 → 「里面的东西不受热」。真实值铁≈80 W/(m·K)、水≈0.6，差 130 倍。
+     * 这里取真实值的一档缩放（÷10 量级），并校验显式扩散稳定条件 α·K·4 < 1（α=0.005）：
+     *   最坏配对 METAL–METAL：K=8.0 → 0.005×8.0×4 = 0.16 < 1 ✓
+     *   METAL–WATER：K=(8.0+0.6)/2=4.3 → 0.086 < 1 ✓
+     * 不采用 k=80 是因为会让金属与水在 2 tick 内均温，观感失真且逼近震荡边界。 */
+    [2, 'WALL', '墙', 'static', 'solid', 9999, 0, 0, 900, 0.60, 9.0,
       0, null, null, null, null, null, null, null, null, -1, null, 0, null,
       '#5E6874', '#78828E', '#414A56', 'no', 1.00, false, false, null, false, 'solid'],
 
-    [3, 'STONE', '岩石', 'static', 'solid', 2600, 0, 0, 840, 0.25, 6.0,
+    [3, 'STONE', '岩石', 'static', 'solid', 2600, 0, 0, 840, 0.80, 6.0,
       0, null, 1200, 'LAVA', null, null, null, null, 0.05, -1, null, 0, null,
       '#8A8175', '#A79C8C', '#615A50', 'no', 1.00, true, false, null, false, 'solid'],
 
-    [4, 'GLASS', '玻璃', 'static', 'solid', 2500, 0, 0, 840, 0.20, 5.5,
+    [4, 'GLASS', '玻璃', 'static', 'solid', 2500, 0, 0, 840, 0.80, 5.5,
       0, null, 1400, 'LAVA', null, null, null, null, 0, -1, null, 0, null,
       '#BCE0DC', '#E0F2EF', '#8FBCB7', 'no', 0.55, false, false, null, false, 'solid'],
 
-    [5, 'METAL', '金属', 'static', 'solid', 7800, 0, 0, 450, 0.90, 4.0,
+    [5, 'METAL', '金属', 'static', 'solid', 7800, 0, 0, 450, 8.00, 4.0,/* k 0.90 → 8.00：金属锅必须传热，见 v1.2.0 注 */
       0, null, 1500, 'LAVA', null, null, null, null, 0.10, -1, null, 0, null,
       '#A6B2C2', '#D6DEE8', '#6E7A8A', 'no', 1.00, true, false, null, false, 'solid'],
 
@@ -87,7 +94,7 @@
       0.10, 250, null, null, null, null, null, null, 0, -1, null, 0.20, 0.50,
       '#A3A83C', '#C4C95E', '#767A24', 'no', 1.00, true, false, null, false, 'powder'],
 
-    [18, 'WATER', '水', 'liquid', 'liquid', 1000, 1, 0.90, 4186, 0.40, null,
+    [18, 'WATER', '水', 'liquid', 'liquid', 1000, 1, 0.90, 4186, 0.60, null,/* k 0.40→0.60（真实值） */
       0, null, null, null, 100, 'STEAM', -2, 'ICE', 1.00, -1, null, 0, null,
       '#2E78DE', '#5AA0F0', '#1D51A8', 'no', 0.85, true, false, null, false, 'liquid'],
 
@@ -201,13 +208,27 @@
   var specificHeatTable = new Float32Array(31);
   var densityTable = new Float32Array(31);
   var movableTable = new Uint8Array(31);
+  /* v1.2.0：体积热容 C = 质量比热 × 密度（J/(m³·K)）。
+   * 这是"空气热不热得起来"的关键量 —— 旧的对称温度交换（守恒 ΣT）等价于假设所有格子热容相等，
+   * 于是 1 格 1200 ℃ 岩浆的热量被整屏空气摊薄，稳态空气只有 30–40 ℃（用户实测：空气不导热）。
+   * 真实体积热容：空气 1.2e3，水 4.19e6，岩石 2.18e6 —— 差三个数量级。
+   * 用 C 加权后，小热容的空气会被热源迅速拉到接近热塬温度，而热源几乎不降温（见 PHYSICS-AIR §14）。 */
+  var volHeatTable = new Float32Array(31);
+  var invVolHeatTable = new Float32Array(31);
   for (var q = 1; q <= 30; q++) {
     var e3 = ELEMENTS[q];
     conductivityTable[q] = e3.conductivity;
     specificHeatTable[q] = e3.specificHeat;
     densityTable[q] = e3.density;
     movableTable[q] = e3.movable ? 1 : 0;
+    volHeatTable[q] = e3.specificHeat * e3.density;
+    invVolHeatTable[q] = 1 / volHeatTable[q];
   }
+  /* 火焰是"持续化学反应放热"，不是一坨被动的热气体：按 1100×0.3 算出的 C=330 会让它
+   * 一碰到空气就被冷却到室温，燃烧蔓延随即失效。这里给它一个等效热容（≈水的 1/4），
+   * 代表放热反应对温度的钳制作用（docs/COMBUSTION-MODEL.md §8）。 */
+  volHeatTable[ID.FIRE] = 1.0e6;
+  invVolHeatTable[ID.FIRE] = 1e-6;
 
   var api = {
     ELEMENTS: ELEMENTS,
@@ -217,6 +238,8 @@
     GROUPED: GROUPED,
     conductivity: conductivityTable,
     specificHeat: specificHeatTable,
+    volHeat: volHeatTable,
+    invVolHeat: invVolHeatTable,
     density: densityTable,
     movable: movableTable,
     get: function (id) { return ELEMENTS[id]; },

@@ -17,17 +17,35 @@
   var Balance = root.YS.Balance;
   var Elements = root.YS.Elements;
 
-  /* 导热：把结果写入 grid.nextTemp（不修改 grid.temp） */
+  /* 导热：把结果写入 grid.nextTemp（不修改 grid.temp）
+   *
+   * v1.2.0：生产路径改为**体积热容加权**（守恒 Σ C·T，C = 比热 × 密度）。
+   *   对每一对 (i,j)：
+   *     r   = α·K·C_REF·(C_i+C_j)/(C_i·C_j)        —— 松弛因子，钳制 ≤ CONDUCT_R_MAX
+   *     ΔT_i = +r·C_j/(C_i+C_j)·(T_j − T_i)
+   *     ΔT_j = −r·C_i/(C_i+C_j)·(T_j − T_i)
+   *   恒有 C_i·ΔT_i + C_j·ΔT_j = 0（严格守恒），且 r ≤ 0.2 ⇒ 4 邻居也不会越过平衡点。
+   *
+   *   为什么要换：旧式 ΔT_i = α·K·(T_j−T_i) 等价于"C_i = C_j"，即把 1 格空气和 1 格岩石
+   *   的热容当成一样。实测 1 格 1000 ℃ 岩石放进 64×64 空气场，整场只升温不到 0.3 ℃，
+   *   岩浆上方稳态也只有 30–40 ℃ —— 用户反馈「空气温度不能传导 / 热空气不往上走」的根因。
+   *   换用体积热容后，空气（C≈1.2e3）相对岩石（C≈2.2e6）热容极小，会被热源迅速拉到
+   *   接近热源温度，而热源几乎不降温 —— 与真实世界一致。
+   *
+   *   opts.energyWeighted=true 保留 v1.1 的对称/比热加权公式（对照与旧测试用）。 */
   function diffuse(grid, opts) {
     opts = opts || {};
     var alpha = opts.alpha !== undefined ? opts.alpha : Balance.PHYS.HEAT_COUPLING;
     var ew = !!opts.energyWeighted;
+    var volMode = Balance.PHYS.VOLUME_HEAT_CONDUCTION && !ew;
     var w = grid.w, h = grid.h, n = grid.n;
     var el = grid.element, temp = grid.temp, next = grid.nextTemp;
     var k = Elements.conductivity, c = Elements.specificHeat;
-    var selfK = Balance.AIR.SELF_K, eps = Balance.AIR.CONDUCT_EPS;
+    var C = Elements.volHeat, iC = Elements.invVolHeat;
+    var CREF = Balance.PHYS.HEAT_CAP_REF, rMax = Balance.PHYS.CONDUCT_R_MAX;
+    var selfK = Balance.AIR.SELF_K, selfR = Balance.AIR.SELF_R, eps = Balance.AIR.CONDUCT_EPS;
     var aSelf = alpha * selfK;
-    var i, j, x, y, row, ei, ej, K, q, dT;
+    var i, j, x, y, row, ei, ej, K, q, dT, ci, cj, sum, r, f;
 
     for (i = 0; i < n; i++) next[i] = temp[i];
 
@@ -39,7 +57,18 @@
         // 东邻居
         if (x + 1 < w) {
           j = i + 1; ej = el[j];
-          if (ei === 1 && ej === 1) {
+          if (volMode) {
+            dT = temp[j] - temp[i];
+            if (!(ei === 1 && ej === 1 && dT < eps && dT > -eps)) {   // 均匀空气近平衡 → 跳过
+              ci = C[ei]; cj = C[ej]; sum = ci + cj;
+              if (ei === 1 && ej === 1) r = selfR;      // 静止空气是热的不良导体
+              else r = alpha * ((k[ei] + k[ej]) * 0.5) * CREF * sum * iC[ei] * iC[ej];
+              if (r > rMax) r = rMax;
+              f = r / sum;
+              next[i] += f * cj * dT;
+              next[j] -= f * ci * dT;
+            }
+          } else if (ei === 1 && ej === 1) {
             dT = temp[j] - temp[i];
             if (dT >= eps || dT <= -eps) {          // 近平衡跳过（均匀空气零成本）
               q = aSelf * dT;
@@ -55,7 +84,18 @@
         // 南邻居
         if (y + 1 < h) {
           j = i + w; ej = el[j];
-          if (ei === 1 && ej === 1) {
+          if (volMode) {
+            dT = temp[j] - temp[i];
+            if (!(ei === 1 && ej === 1 && dT < eps && dT > -eps)) {
+              ci = C[ei]; cj = C[ej]; sum = ci + cj;
+              if (ei === 1 && ej === 1) r = selfR;      // 静止空气是热的不良导体
+              else r = alpha * ((k[ei] + k[ej]) * 0.5) * CREF * sum * iC[ei] * iC[ej];
+              if (r > rMax) r = rMax;
+              f = r / sum;
+              next[i] += f * cj * dT;
+              next[j] -= f * ci * dT;
+            }
+          } else if (ei === 1 && ej === 1) {
             dT = temp[j] - temp[i];
             if (dT >= eps || dT <= -eps) {
               q = aSelf * dT;

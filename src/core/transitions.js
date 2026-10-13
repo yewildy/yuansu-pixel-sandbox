@@ -11,6 +11,7 @@
   var Elements = root.YS.Elements;
   var RNG = root.YS.RNG;
   var ID = Elements.ID;
+  var ELS = Elements.ELEMENTS;
   var P = Balance.PHYS;
 
   function hasEmpty4(grid, i) {
@@ -24,6 +25,27 @@
   }
 
   function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+  /* 冷凝核探测（v1.2.0「接触成核」，见 docs/CONDENSATION-MODEL.md §3）：
+   * 4 邻域存在「非气体元素」且该核温度低于 NUCLEUS_COLD_T → 判为冷核。
+   *
+   * 为什么必须这样：旧模型只看"蒸汽自身 T<100"，导致蒸汽一离开水面、被空气吹冷一点
+   * 就整片变水滴砸下来 —— 用户实测「受冷太快，立刻变成水滴非常不合理」。
+   * 现实里水蒸气凝结是**非均相**的：需要凝结核（尘粒、器壁）。Powder Game 也这么做——
+   * 它的 STEAM 根本不会变水，变水的是 CLOUD，且必须"碰到 block/固体"才触发。
+   * 于是：开阔空气中的蒸汽只以 HOMO_F 的极慢速率均相成核（保持气态、继续上升）；
+   * 一旦贴到冷的锅盖/窗玻璃/岩壁，就全速凝结成水珠。 */
+  function hasColdNucleus(grid, i) {
+    var el = grid.element, t = grid.nextTemp, w = grid.w, h = grid.h;
+    var x = i % w, y = (i / w) | 0;
+    var cold = Balance.STEAM.NUCLEUS_COLD_T;
+    var j, e;
+    if (x > 0) { j = i - 1; e = el[j]; if (e !== 1 && ELS[e].state !== 'gas' && t[j] < cold) return true; }
+    if (x < w - 1) { j = i + 1; e = el[j]; if (e !== 1 && ELS[e].state !== 'gas' && t[j] < cold) return true; }
+    if (y > 0) { j = i - w; e = el[j]; if (e !== 1 && ELS[e].state !== 'gas' && t[j] < cold) return true; }
+    if (y < h - 1) { j = i + w; e = el[j]; if (e !== 1 && ELS[e].state !== 'gas' && t[j] < cold) return true; }
+    return false;
+  }
 
   var transitions = 0;
 
@@ -91,13 +113,15 @@
             } else if (lat[i] > 0) lat[i]--;
             break;
 
-          /* ---- 汽 → 水（冷凝） ---- */
+          /* ---- 汽 → 水（冷凝，v1.2.0 接触成核） ---- */
           case 23: /* STEAM */
             if (T < 100) {
               if (T >= 98) nt[i] = 100;
               if (lat[i] < 255) lat[i]++;
               if (lat[i] >= P.LATENT_TICKS_COND) {
                 p = clamp(Balance.STEAM.COND_COEF * (100 - T), 0, Balance.STEAM.COND_P_MAX);
+                /* 无冷核（四周皆气体/真空）→ 只走极慢的均相成核；贴到冷壁面/冷液面 → 全速 */
+                if (!hasColdNucleus(grid, i)) p *= Balance.STEAM.HOMO_F;
                 if (RNG.hash01(x, y, ID.STEAM * 131 + tick) < p) { el[i] = ID.WATER; lat[i] = 0; transitions++; }
               }
             } else if (lat[i] > 0) lat[i]--;
