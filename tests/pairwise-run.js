@@ -940,10 +940,10 @@ var UNREASONABLE = [
     title: '空气对流/导热已修复，但**温度场写实度仍不足**（隔空加热被网格尺度放大）', sev: 'Minor', real: '空气导热很弱、主要靠对流；一块热源隔着空气时，对侧升温应缓慢。', here: '探针 air-conduct：LAVA 与水仅隔 1 格空气，水在 1200 tick 内被加热；改造前恒为 +0.00°C（缺陷 B1），现可测到升温。', gap: '方向正确；但缩小网格后空气极易被加热，绝对数值偏乐观。', evidence: 'tests/run.js A1/A2 通过；BASELINE B1 已消除', fix: '生产 320×180 网格下复测，确认升温速率合理。'
   },
   {
-    title: '植物**整株一起枯死**：大片植物只有一侧临水时，远离水的一侧拖垮整株', sev: 'Critical', real: '植物只要根系能吸到水就能存活，不会因树冠远离水源而整株死亡。', here: 'PLANT×WATER（mid）实测：64 格植物最终全部变成 81 格 DUST。原因是枯萎以"整个连通群落"为单位触发，区块内任一格根区取不到水（>4 格）即整株枯死。', gap: '存活判定与实际植物生理不符——应当"逐株/逐枝"判定，而不是"整块连坐"。', evidence: 'pairwise-run PLANT×WATER mid/large', fix: '枯萎粒度改为"每株（按根锚点分簇）"，或让水在土中扩散、增大 WATER_REACH；至少把"群落级连坐"限制在同一根系的范围内。'
+    title: '✅ 已于 v1.2.0 修复：植物整株一起枯死（现改为休眠，永不死亡）', sev: 'Minor', real: '植物只要根系能吸到水就能存活；且 Powder Game 的 Vine/Seed-grown 植物本来就没有枯萎死亡机制。', here: 'v1.2.0 起删除 wiltColony：断根/根区无水改为「休眠」——停止生长、不累积应激、**绝不产生 DUST**，重新接水接地即恢复。CAPILLARY_HEAD 30→80。', gap: '已消除。实测供水充足时持续长到 43 格且 DUST=0（tests/run.js V6）。', evidence: 'tests/run.js V6 通过；PLANT×WATER 判定组已 PASS', fix: '无需再修。「必须连地才生长」的红线保留，防止回到空中楼阁。'
   },
   {
-    title: '火**离开燃料**：火焰上升速度快于点燃速度，木/油/煤大面积烧不着', sev: 'Critical', real: '木材、油、煤一旦被点燃会持续燃烧、火势沿燃料面蔓延，烧尽为止。', here: 'FIRE×WOOD（mid）仅约 3 格被烧（WOOD 64→61/63）；FIRE×COAL 完全未燃（COAL 64→64）；FIRE×OIL 仅个别格被点燃。', gap: '火焰是低密度气体，浮力使其在 1 格内即离开燃料表面，来不及引燃。', evidence: 'pairwise-run FIRE×WOOD/COAL/OIL mid', fix: '① 点燃判定改用 8 邻域并给"贴附燃料"更高权重；② 让火焰在燃料上停留（贴附/寿命延长）；③ 起火时对同材质邻格连锁引燃。'
+    title: '✅ 已于 v1.2.1 修复：燃料烧不透（原报告误判为「火离开燃料」）', sev: 'Minor', real: '木材、油、煤一旦被点燃会持续燃烧、火势沿燃料面蔓延，烧尽为止。', here: 'v1.2.1 实测 24×24：WOOD 37%→**95%**、DUST 34%→**77%**、SEED 36%→**92%**、OIL 100%。', gap: '已消除。**原判因是错的** —— 火并没有飘走：单独把火焰换热系数 k 从 0.1 提到 4.0 实测完全无效（37%→40%）；直接测「贴火的木料」才看清死锁：t=600 时 10 格木料贴着火却只有 2 格满足 hasOxygen，火是就地烧完熄灭的。真正根因是 ①锚定判据 `!E.movable` 把 DUST/OIL/SEED 排除；②**燃烧产物 ASH 堵死氧气通道**（`channelP` 旧值让灰占了多数）。详见 docs/PHYSICS-AIR.md 附录 B。', evidence: 'tests/run.js V7/V8/V9 通过；v1.2.1 全量重跑 FAIL 23→12', fix: '无需再修。COAL 仍偏慢（47%）属「煤难烧」的合理表现，且 1200 tick 窗口内尚未烧完。'
   },
   {
     title: '酸蚀/溶解**不守恒**：金属凭空消失、盐溶于水后毫无痕迹', sev: 'Major', real: '酸蚀金属生成金属盐溶液 + 氢气（质量守恒）；盐溶于水后以离子形式留在水中，水"变咸"。', here: 'ACID×METAL：METAL 64→36（凭空减少，仅 0.3 概率产 GAS）；SALT×WATER：SALT 64→0、WATER 64→64（水无任何变化）。', gap: '溶解产物未进入液相，破坏质量守恒的世界观一致性。', evidence: 'pairwise-run ACID×METAL、SALT×WATER mid（基线 B5/B6 仍在）', fix: '引入"盐水/金属盐溶液"状态或给水加 salinity 属性；酸蚀至少保证 METAL→(GAS+溶液) 总数守恒。'
