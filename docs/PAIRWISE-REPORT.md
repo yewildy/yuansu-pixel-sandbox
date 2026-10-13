@@ -18,11 +18,11 @@
 | 每组 tick 数 | 1200（= 20.0 游戏秒） |
 | 仿真总次数 | **5400** |
 | 仿真总 tick 数 | **6,480,000** |
-| 实际耗时 | **683.1 s**（≈ 8 次仿真/秒） |
+| 实际耗时 | **701.7 s**（≈ 8 次仿真/秒） |
 | 采样密度 | full（早期 60 tick + 每 30 tick） |
 | 随机种子 | 1337 / 2（引擎全程确定性，换种子 = 换逐格随机采样） |
 | 运行环境 | Node v22.22.2 / win32 |
-| 生成时间 | 2026-10-12T16:36:47.523Z |
+| 生成时间 | 2026-10-13T14:29:40.786Z |
 
 **网格尺寸（每档）**：
 
@@ -45,8 +45,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 
 ## 0.5 结论速览（TL;DR）
 
-- 本次共跑 **900 个有序元素对 × 3 个用量档 × 2 个种子 = 5400 次仿真**（6,480,000 tick，耗时 683 秒）。
-- 判定分布（判定组 2700 组）：**PASS 2217 / FAIL 12 / UNEXPECTED 0 / N/A 471**。
+- 本次共跑 **900 个有序元素对 × 3 个用量档 × 2 个种子 = 5400 次仿真**（6,480,000 tick，耗时 702 秒）。
+- 判定分布（判定组 2700 组）：**PASS 2223 / FAIL 6 / UNEXPECTED 0 / N/A 471**。
 - 绝大多数组合（含全部"无显著交互"的固体/流体对）**行为与现实相符**；出现偏差的集中在**燃烧（火点不着燃料）**与**溶解/腐蚀（质量不守恒）**两类。
 - **用户点名的问题**：空气不导热 ✓已修、热空气不上升 ✓已修、植物无根乱长 ✓已修、"倒液氮凭空造水" ✓已修、水源泉死元素 ✓已修。
 - **仍存在的问题**：共 **15 条**登记于 §4；其中最严重的见下（建议优先修）。
@@ -57,7 +57,7 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 4. **[Major] 液体金属不会熔化于岩浆（对铁成立、对铜/铝不成立）** —— 把所有金属当作铁，忽略低熔点金属。
 5. **[Major] 沙 → 玻璃链在标准场景不可达** —— "下调阈值"并未真正打通链路——自然玩法里做不出玻璃。
 
-> **质量门判定（建议性）**：**CONCERNS**（存在 12 个判定组未达现实预期）。最终放行由用户决定。
+> **质量门判定（建议性）**：**CONCERNS**（存在 6 个判定组未达现实预期）。最终放行由用户决定。
 
 ---
 
@@ -67,8 +67,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 
 | 判定 | 数量 | 占比 | 含义 |
 |---|---|---|---|
-| **PASS** | 4439 | 82.2% | 与现实预期一致（含"无显著交互"） |
-| **FAIL** | 19 | 0.4% | 显式预期未满足 |
+| **PASS** | 4448 | 82.4% | 与现实预期一致（含"无显著交互"） |
+| **FAIL** | 10 | 0.2% | 显式预期未满足 |
 | **N/A** | 942 | 17.4% | 同种自配 / 静态固体互配（定义上无化学交互） |
 | 合计 | 5400 | 100% | |
 
@@ -76,20 +76,20 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 
 | 判定 | 数量 | 占比 |
 |---|---|---|
-| **PASS** | 2217 | 82.1% |
-| **FAIL** | 12 | 0.4% |
+| **PASS** | 2223 | 82.3% |
+| **FAIL** | 6 | 0.2% |
 | **N/A** | 471 | 17.4% |
 | 合计 | 2700 | 100% |
 
-**不稳定（跨种子判定不一致，flaky）**：5 组（COAL×FIRE/small, COAL×FIRE/large, OIL×FIRE/small, FIRE×DUST/small, FIRE×COAL/small）。
+**不稳定（跨种子判定不一致，flaky）**：2 组（OIL×FIRE/small, FIRE×DUST/small）。
 
-> 判定组中 **FAIL+12** 与 **UNEXPECTED+0** 是本报告重点；`N/A` 与 `PASS` 中的"无显著交互"属预期。**但注意：`PASS` 只代表"引擎按规格实现"，规格本身与现实不符的点单列于 §4 不合理清单。**
+> 判定组中 **FAIL+6** 与 **UNEXPECTED+0** 是本报告重点；`N/A` 与 `PASS` 中的"无显著交互"属预期。**但注意：`PASS` 只代表"引擎按规格实现"，规格本身与现实不符的点单列于 §4 不合理清单。**
 
 ### 1.3 判定组 × 类别 交叉表（2700 组）
 
 | 类别 | 组数 | PASS | FAIL | UNEXPECTED | N/A | 说明 |
 |---|---|---|---|---|---|---|
-| REACTION | 237 | 227 | 10 | 0 | 0 | 反应表命中 |
+| REACTION | 237 | 233 | 4 | 0 | 0 | 反应表命中 |
 | PHASE | 102 | 102 | 0 | 0 | 0 | 热/冷源→相变 |
 | THERMAL | 276 | 276 | 0 | 0 | 0 | 仅导热 |
 | AIR | 174 | 174 | 0 | 0 | 0 | X 在空气中 |
@@ -1128,9 +1128,9 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | COAL × SMOKE | small | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1486 WALL=48 COAL=1 SMOKE=1 → 结束 AIR=1487 WALL=48 COAL=1；中途曾现: COAL,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | COAL × SMOKE | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 COAL=64 SMOKE=64 → 结束 AIR=1424 WALL=48 COAL=64；中途曾现: COAL,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | COAL × SMOKE | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 COAL=576 SMOKE=576 → 结束 AIR=2232 WALL=72 COAL=576；中途曾现: COAL,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
-| COAL × FIRE | small | 煤燃点较高但耐烧、放热多，烧尽成灰（大部分应被烧掉） | 起始 AIR=1486 WALL=48 COAL=1 FIRE=1 → 结束 AIR=1487 WALL=48 ASH=1；中途曾现: ASH,COAL,SMOKE,FIRE；新: ASH；消失: COAL,FIRE；Tmax 25.3°C | **FAIL（不稳定）** | 见不合理清单·火离开燃料 |
-| COAL × FIRE | mid | 煤燃点较高但耐烧、放热多，烧尽成灰（大部分应被烧掉） | 起始 AIR=1360 WALL=48 COAL=64 FIRE=64 → 结束 AIR=1464 WALL=48 ASH=17 COAL=7；中途曾现: ASH,COAL,SMOKE,FIRE；新: ASH；消失: FIRE；Tmax 242.4°C | **PASS** | 见不合理清单·火离开燃料 |
-| COAL × FIRE | large | 煤燃点较高但耐烧、放热多，烧尽成灰（大部分应被烧掉） | 起始 AIR=1656 WALL=72 COAL=576 FIRE=576 → 结束 AIR=2336 WALL=72 ASH=52 COAL=287 SMOKE=56 FIRE=77；中途曾现: ASH,COAL,SMOKE,FIRE；新: ASH,SMOKE；消失: 无；Tmax 784.2°C | **FAIL（不稳定）** | 见不合理清单·火离开燃料 |
+| COAL × FIRE | small | 煤燃点较高但耐烧、放热多，烧尽成灰（大部分应被烧掉） | 起始 AIR=1486 WALL=48 COAL=1 FIRE=1 → 结束 AIR=1487 WALL=48 ASH=1；中途曾现: ASH,COAL,SMOKE,FIRE；新: ASH；消失: COAL,FIRE；Tmax 25.3°C | **PASS** | 见不合理清单·火离开燃料 |
+| COAL × FIRE | mid | 煤燃点较高但耐烧、放热多，烧尽成灰（大部分应被烧掉） | 起始 AIR=1360 WALL=48 COAL=64 FIRE=64 → 结束 AIR=1476 WALL=48 ASH=12；中途曾现: ASH,COAL,SMOKE,FIRE；新: ASH；消失: COAL,FIRE；Tmax 230.2°C | **PASS** | 见不合理清单·火离开燃料 |
+| COAL × FIRE | large | 煤燃点较高但耐烧、放热多，烧尽成灰（大部分应被烧掉） | 起始 AIR=1656 WALL=72 COAL=576 FIRE=576 → 结束 AIR=2403 WALL=72 ASH=51 COAL=227 SMOKE=50 FIRE=77；中途曾现: ASH,COAL,SMOKE,FIRE；新: ASH,SMOKE；消失: 无；Tmax 788.5°C | **PASS** | 见不合理清单·火离开燃料 |
 | COAL × GAS | small | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1486 WALL=48 COAL=1 GAS=1 → 结束 AIR=1487 WALL=48 COAL=1；中途曾现: COAL,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | COAL × GAS | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 COAL=64 GAS=64 → 结束 AIR=1424 WALL=48 COAL=64；中途曾现: COAL,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | COAL × GAS | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 COAL=576 GAS=576 → 结束 AIR=2232 WALL=72 COAL=576；中途曾现: COAL,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
@@ -1338,9 +1338,9 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | LAVA × SPRING | small | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1486 WALL=48 LAVA=1 SPRING=1 → 结束 AIR=1455 WALL=48 STONE=1 WATER=31 SPRING=1；中途曾现: STONE,WATER,LAVA,STEAM,SPRING；新: STONE,WATER；消失: LAVA；Tmax 25.5°C | **PASS** |  |
 | LAVA × SPRING | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 LAVA=64 SPRING=64 → 结束 AIR=1327 WALL=48 STONE=64 WATER=32 STEAM=1 SPRING=64；中途曾现: STONE,WATER,LAVA,STEAM,SPRING；新: STONE,WATER,STEAM；消失: LAVA；Tmax 215.1°C | **PASS** |  |
 | LAVA × SPRING | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 LAVA=576 SPRING=576 → 结束 AIR=1597 WALL=72 STONE=571 WATER=59 LAVA=5 SPRING=576；中途曾现: STONE,WATER,LAVA,STEAM,SPRING；新: STONE,WATER,STEAM；消失: 无；Tmax 699.7°C | **PASS** |  |
-| LAVA × TNT | small | 高温岩浆引爆炸药 | 起始 AIR=1486 WALL=48 LAVA=1 TNT=1 → 结束 AIR=1486 WALL=48 STONE=1 TNT=1；中途曾现: STONE,LAVA,TNT；新: STONE；消失: LAVA；Tmax 31.1°C | **FAIL** |  |
-| LAVA × TNT | mid | 高温岩浆引爆炸药 | 起始 AIR=1360 WALL=48 LAVA=64 TNT=64 → 结束 AIR=1449 WALL=48 STONE=39；中途曾现: STONE,LAVA,SMOKE,FIRE,TNT；新: STONE；消失: LAVA,TNT；Tmax 310.5°C | **PASS** |  |
-| LAVA × TNT | large | 高温岩浆引爆炸药 | 起始 AIR=1656 WALL=72 LAVA=576 TNT=576 → 结束 AIR=2327 WALL=72 STONE=473 LAVA=8；中途曾现: STONE,LAVA,SMOKE,FIRE,TNT；新: STONE；消失: TNT；Tmax 699.7°C | **PASS** |  |
+| LAVA × TNT | small | 高温岩浆引爆炸药 | 起始 AIR=1486 WALL=48 LAVA=1 TNT=1 → 结束 AIR=1488 WALL=48；中途曾现: LAVA,FIRE,TNT；新: 无；消失: LAVA,TNT；Tmax 33.4°C | **PASS** |  |
+| LAVA × TNT | mid | 高温岩浆引爆炸药 | 起始 AIR=1360 WALL=48 LAVA=64 TNT=64 → 结束 AIR=1457 WALL=48 STONE=31；中途曾现: STONE,LAVA,SMOKE,FIRE,TNT；新: STONE；消失: LAVA,TNT；Tmax 284.0°C | **PASS** |  |
+| LAVA × TNT | large | 高温岩浆引爆炸药 | 起始 AIR=1656 WALL=72 LAVA=576 TNT=576 → 结束 AIR=2322 WALL=72 STONE=477 LAVA=9；中途曾现: STONE,LAVA,SMOKE,FIRE,TNT；新: STONE；消失: TNT；Tmax 699.7°C | **PASS** |  |
 | ACID × ACID | small | 同种物质相邻：自然堆叠/流动/相变，无化学变化 | 起始 AIR=1487 WALL=48 ACID=1 → 结束 AIR=1487 WALL=48 ACID=1；中途曾现: ACID；新: 无；消失: 无；Tmax 20.0°C | **N/A** |  |
 | ACID × ACID | mid | 同种物质相邻：自然堆叠/流动/相变，无化学变化 | 起始 AIR=1424 WALL=48 ACID=64 → 结束 AIR=1424 WALL=48 ACID=64；中途曾现: ACID；新: 无；消失: 无；Tmax 20.0°C | **N/A** |  |
 | ACID × ACID | large | 同种物质相邻：自然堆叠/流动/相变，无化学变化 | 起始 AIR=2232 WALL=72 ACID=576 → 结束 AIR=2232 WALL=72 ACID=576；中途曾现: ACID；新: 无；消失: 无；Tmax 20.0°C | **N/A** |  |
@@ -1569,7 +1569,7 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | ASH × FIRE | PASS；活: ASH | PASS；活: ASH | PASS；活: ASH | THERMAL |
 | COAL × LAVA | PASS；活: COAL | PASS；活: COAL | PASS；活: COAL+LAVA | THERMAL |
 | COAL × STEAM | PASS；活: COAL | PASS；活: COAL | PASS；活: COAL | STRUCT |
-| COAL × FIRE | FAIL；活: 全灭 | PASS；活: COAL | FAIL；活: COAL+FIRE | REACTION |
+| COAL × FIRE | PASS；活: 全灭 | PASS；活: 全灭 | PASS；活: COAL+FIRE | REACTION |
 | GUNPOWDER × LAVA | PASS；活: GUNPOWDER | PASS；活: GUNPOWDER | PASS；活: GUNPOWDER+LAVA | THERMAL |
 | GUNPOWDER × STEAM | PASS；活: GUNPOWDER | PASS；活: GUNPOWDER | PASS；活: GUNPOWDER | FLOW |
 | SEED × WATER | FAIL；活: SEED+WATER | PASS；活: SEED+WATER | PASS；活: SEED+WATER | LIFE |
@@ -1639,7 +1639,7 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | SNOW×LAVA vs LAVA×SNOW | mid | PASS；新 STONE,WATER | PASS；新 STONE,WATER,STEAM |
 | ASH×STEAM vs STEAM×ASH | mid | PASS；新 WATER | PASS；新 无 |
 | COAL×STEAM vs STEAM×COAL | mid | PASS；新 WATER | PASS；新 无 |
-| COAL×FIRE vs FIRE×COAL | small | FAIL；新 ASH | FAIL；新 无 |
+| COAL×FIRE vs FIRE×COAL | small | PASS；新 ASH | PASS；新 无 |
 | COAL×FIRE vs FIRE×COAL | mid | PASS；新 ASH | PASS；新 ASH,SMOKE |
 | GUNPOWDER×STEAM vs STEAM×GUNPOWDER | mid | PASS；新 WATER | PASS；新 无 |
 | SEED×STEAM vs STEAM×SEED | mid | PASS；新 WATER | PASS；新 无 |
@@ -2151,7 +2151,7 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | COAL×LN2 | THERMAL | PASS | PASS | PASS |
 | COAL×STEAM | STRUCT | PASS | PASS | PASS |
 | COAL×SMOKE | STRUCT | PASS | PASS | PASS |
-| COAL×FIRE | REACTION | FAIL | PASS | FAIL |
+| COAL×FIRE | REACTION | PASS | PASS | PASS |
 | COAL×GAS | STRUCT | PASS | PASS | PASS |
 | COAL×CLONE | NONE | N/A | N/A | N/A |
 | COAL×VIRUS | NONE | N/A | N/A | N/A |
@@ -2221,7 +2221,7 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | LAVA×CLONE | REACTION | PASS | PASS | PASS |
 | LAVA×VIRUS | THERMAL | PASS | PASS | PASS |
 | LAVA×SPRING | THERMAL | PASS | PASS | PASS |
-| LAVA×TNT | REACTION | FAIL | PASS | PASS |
+| LAVA×TNT | REACTION | PASS | PASS | PASS |
 | ACID×ACID | SELF | N/A | N/A | N/A |
 | ACID×LN2 | THERMAL | PASS | PASS | PASS |
 | ACID×STEAM | FLOW | PASS | PASS | PASS |
