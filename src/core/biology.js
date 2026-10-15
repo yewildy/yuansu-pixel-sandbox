@@ -34,6 +34,8 @@
   /* 根区搜索临时结果（避免每次分配对象） */
   var foundWater = -1;
   var foundSoil = -1;
+  /* v1.4.1 茎秆导水源：本格 4 邻域的水（浇在头顶/叶面上，根区够不着时用它） */
+  var touchWater = -1;
 
   function ensure(n) {
     if (cachedN === n) return;
@@ -129,6 +131,11 @@
     } else if (foundSoil >= 0) {
       var sa = grid.age[foundSoil];
       grid.age[foundSoil] = sa > Balance.PLANT.SOIL_DRAW ? sa - Balance.PLANT.SOIL_DRAW : 0;
+    } else if (touchWater >= 0) {
+      /* v1.4.1：喝叶面上的水（茎秆导水的消耗端）—— 浇在植物头顶的水被生长消耗，
+       * 不会出现"头顶泡着水却无限白嫖生长"。 */
+      grid.element[touchWater] = AIR; grid.temp[touchWater] = amb;
+      grid.age[touchWater] = 0; grid.latent[touchWater] = 0;
     }
   }
 
@@ -244,8 +251,20 @@
 
         /* ===== PLANT：根系 / 枯萎 / 生长 ===== */
         var base = columnBase(grid, x, y);
+        touchWater = -1;
         findWater(grid, base, Balance.PLANT.WATER_REACH);
         var hasWater = (foundWater >= 0) || (foundSoil >= 0);
+        /* v1.4.1 茎秆导水（用户实测：「浇水浇不下去，植物就不长了」）：
+         * 水浇在植物身上（窄井/洞穴里浇不进根区，或浇在头顶叶面）→ 4 邻域任一格
+         * 有水即算整株供水，该格同时作为消耗水源（见 consumeGrowthWater）。
+         * 物理依据：茎秆的毛细导水 —— 浇在叶面的水会沿茎流到根。 */
+        if (!hasWater) {
+          var nbT = grid.fill4(i);
+          for (var kT = 0; kT < 4; kT++) {
+            var nT = nbT[kT];
+            if (nT >= 0 && el[nT] === WATER) { touchWater = nT; hasWater = true; break; }
+          }
+        }
         var rooted = rootedAt(grid, i, x, y, tick);
 
         /* v1.2.0：植物不再枯死。

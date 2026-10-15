@@ -447,3 +447,18 @@ Powder Game 的 Vine 无耗水、无规模上限，可以无限铺；本作的�
 ---
 
 *本文档由策划与系统设计 文策渊（Vince Coyer）产出，替代 `docs/PHYSICS.md §10`。与空气系统的接口以 `docs/PHYSICS-AIR.md` 为准；元素 ID / 配色以 `docs/ART.md` 为准。修订对照见 `docs/PHYSICS-REVISION.md`。*
+
+## 12. 茎秆导水与生态参数（v1.4.1）
+
+**用户实测问题**：「种子下面发芽了生根会有空腔，导致我浇水浇不下去，植物就不长了」——
+水浇在植物头顶/叶面上，根区（`WATER_REACH=4` 半径）够不着，整株休眠。
+
+**修正（茎秆导水，`biology.js`）**：植物格 4 邻域任一格为 WATER → 整株判为供水
+（物理：浇在叶面的水沿茎秆毛细下导）。该水同时作为 `consumeGrowthWater` 的消耗水源
+（`touchWater`），避免"头顶泡着水无限生长"。
+
+**配套参数**（详见 `docs/PHYSICS-AIR.md 附录 D3`）：`SOIL.MOISTURE_MAX 200→400`、
+`MOISTURE_GAIN 2→6`、`DRY_RATE 1→0.25`（长效蓄水库）、`SEED.density 800→1050`（入水沉底，
+不再被流动的水推走导致发芽延迟）。实测 V6 主柱高度 21-23 → **35**。
+
+**验收**：V22（抽干根区后只浇头顶 → 仍生长 ≥3 格且水被消耗）；V6/V13 保持。

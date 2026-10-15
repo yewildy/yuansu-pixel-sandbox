@@ -90,7 +90,7 @@
       0.35, 200, null, null, null, null, null, null, 0.10, -1, null, 0, 0.85,
       '#4A3F3A', '#6A5A50', '#2E2622', 'no', 1.00, true, false, null, false, 'powder'],
 
-    [17, 'SEED', '种子', 'powder', 'powder', 800, 1, 0.60, 2000, 0.12, 1.0,
+    [17, 'SEED', '种子', 'powder', 'powder', 1050, 1, 0.60, 2000, 0.12, 1.0,/* 密度 800→1050：略重于水，入水即沉底不漂浮——流动的水不会再把它推着走（v1.4.1：种子被水冲跑导致发芽延迟 1000+ tick） */
       0.10, 250, null, null, null, null, null, null, 0, -1, null, 0.20, 0.50,
       '#A3A83C', '#C4C95E', '#767A24', 'no', 1.00, true, false, null, false, 'powder'],
 

@@ -298,7 +298,7 @@ test('8b. balance 键名与 §14 一致（抽样）', function () {
   assert(B.AIR.SELF_K === 0.5 && B.AIR.RELAX === 0.0005, 'AIR 双轨系数');
   assert(B.PLANT.CAPILLARY_HEAD === 80, 'PLANT.CAPILLARY_HEAD 应为 80（v1.2.0：植物不再枯死，软上限放宽）');
   assert(B.PLANT.MAX_HEIGHT === undefined, 'MAX_HEIGHT 应已删除');
-  assert(B.SOIL.MOISTURE_MAX === 200, 'SOIL.MOISTURE_MAX');
+  assert(B.SOIL.MOISTURE_MAX === 400, 'SOIL.MOISTURE_MAX 应为 400（v1.4.1：土壤蓄水库加大，配合液体表面流修复）');
   assert(B.PHYS.ENV_RELAX_GAS === 0.0006, 'ENV_RELAX_GAS 应为 0.0006（v1.2.0：蒸汽不再秒冷）');
   assert(B.PHYS.ENV_RELAX_LIQUID === 0.0005, 'ENV_RELAX_LIQUID 应为 0.0005');
   assert(B.PHYS.ENV_RELAX_SOLID === 0.001, 'ENV_RELAX_SOLID 应为 0.001');
@@ -864,7 +864,7 @@ test('V3. 油在水下必须自动上浮分层', function () {
   assert(rise >= 20, '油（ρ=900）应浮到水（ρ=1000）之上，上浮 ' + rise.toFixed(1) + ' 格（应 ≥20）');
 });
 
-test('V4. 金属锅：锅底加热 → 锅内水必须受热（用户反馈③）', function () {
+test('V4. 金属锅：锅底加热 → 锅内水必须受热并烧开（用户反馈③）', function () {
   var eng = Engine.create({ w: 80, h: 80, seed: 1337 }), g = eng.grid;
   fillBox(g, 0, 76, 79, 79, E.STONE);
   fillBox(g, 20, 72, 59, 75, E.LAVA);
@@ -873,21 +873,32 @@ test('V4. 金属锅：锅底加热 → 锅内水必须受热（用户反馈③�
   fillBox(g, 24, 55, 25, 70, E.METAL);          // 左壁
   fillBox(g, 54, 55, 55, 70, E.METAL);          // 右壁
   fillBox(g, 26, 56, 53, 69, E.WATER);          // 锅内的水
-  var top = 0, bot = 0, cT = 0, cB = 0;
+  /* v1.4.1：温差改在 t=250 测 —— t=600 时上层水已沸腾成蒸汽逸出（锅是开口的），
+   * 届时上层格已无水，均值失去意义（v1.4.0 及以前该测试恰好卡在沸腾前的旧传热节奏上）。 */
+  var top = 0, bot = 0, cT = 0, cB = 0, steam = 0, bot600 = 0, cB600 = 0;
   for (var t = 1; t <= 600; t++) {
     eng.step();
-    if (t === 600) {
+    if (t === 250) {
       for (var y = 56; y < 70; y++) for (var x = 26; x < 54; x++) {
         var v = g.temp[g.idx(x, y)];
+        if (g.element[g.idx(x, y)] !== E.WATER) continue;
         if (y < 62) { top += v; cT++; } else { bot += v; cB++; }
       }
     }
+    if (t === 600) {
+      for (var y2 = 62; y2 < 70; y2++) for (var x2 = 26; x2 < 54; x2++) {
+        if (g.element[g.idx(x2, y2)] === E.WATER) { bot600 += g.temp[g.idx(x2, y2)]; cB600++; }
+      }
+      for (var i2 = 0; i2 < g.n; i2++) if (g.element[i2] === E.STEAM) steam++;
+    }
   }
-  var tAvg = top / cT, bAvg = bot / cB;
-  assert(bAvg >= 60, '600 tick 后锅底水温应 ≥60°C，实得 ' + bAvg.toFixed(0) +
-    '°C（v1.1 恒为 20°C —— 金属导热系数 0.9 与空气热容失真共同导致）');
-  assert(Math.abs(tAvg - bAvg) <= 30, '锅内上下层温差应 ≤30°C（热对流把热量搬匀），实得 ' +
+  var tAvg = cT ? top / cT : 0, bAvg = cB ? bot / cB : 0;
+  assert(bAvg >= 60, '250 tick 后锅底水温应 ≥60°C，实得 ' + bAvg.toFixed(0) + '°C');
+  assert(cT > 0 && Math.abs(tAvg - bAvg) <= 30, '沸腾前锅内上下层温差应 ≤30°C（热对流把热量搬匀），实得 ' +
     Math.abs(tAvg - bAvg).toFixed(0) + '°C');
+  assert(cB600 > 0 && bot600 / cB600 >= 90, '600 tick 时锅底余水应 ≥90°C（持续加热），实得 ' +
+    (cB600 ? (bot600 / cB600).toFixed(0) : '无水') + '°C');
+  assert(steam > 0, '600 tick 内锅内水应沸腾产生蒸汽（用户核心诉求：水烧开），实得 STEAM=' + steam);
 });
 
 test('V5. 蒸汽不得"立刻变水滴"：接触成核（用户反馈④）', function () {
@@ -1185,8 +1196,102 @@ test('V14. EMBER 永燃火种：点燃邻木 / 长燃不熄 / 可当炉子 / 爆
 });
 
 /* ============================================================
-   输出
+   v1.4.1：液体表面流 / 分子色差 / 火种动效 / 茎秆导水
    ============================================================ */
+test('V19. 倒水入池不堆塔：液体表面流（用户反馈「水像沙子一样堆在那里」）', function () {
+  /* 场景 A：往水平池面上倒 5×5 水 —— 旧实现（stalled 一票否决侧移）300 tick 后仍留 6 格高塔 */
+  var eA = Engine.create({ w: 80, h: 60, seed: 1337 }), gA = eA.grid;
+  for (var x = 0; x < gA.w; x++) for (var y = gA.h - 3; y < gA.h; y++) gA.setEl(x, y, E.WALL);
+  for (var x2 = 10; x2 <= 69; x2++) for (var y2 = 40; y2 <= gA.h - 4; y2++) gA.setEl(x2, y2, E.WATER);
+  for (var x3 = 38; x3 <= 42; x3++) for (var y3 = 30; y3 <= 35; y3++) gA.setEl(x3, y3, E.WATER);  // 倒在池面中央
+  var worst = 0;
+  for (var t = 1; t <= 300; t++) {
+    eA.step();
+    if (t < 60) continue;                                      // 前 60 tick 是空中下落过程，不算"堆"
+    for (var xx = 10; xx <= 69; xx++) {                       // 池面（y=40）以上最多堆几格
+      var top = -1;
+      for (var yy = 0; yy < gA.h; yy++) if (gA.element[gA.idx(xx, yy)] === E.WATER) { top = yy; break; }
+      if (top >= 0 && 40 - top > worst) worst = 40 - top;
+    }
+  }
+  assert(worst <= 2, '倒在水面上的水应铺平（堆高 ≤2 格），实得 ' + worst + ' 格');
+  /* 场景 B：油倒在水面上应铺成薄膜（旧实现油堆 6 格塔且完全不动） */
+  var eB = Engine.create({ w: 80, h: 60, seed: 1337 }), gB = eB.grid;
+  for (var x4 = 0; x4 < gB.w; x4++) for (var y4 = gB.h - 3; y4 < gB.h; y4++) gB.setEl(x4, y4, E.WALL);
+  for (var x5 = 10; x5 <= 69; x5++) for (var y5 = 40; y5 <= gB.h - 4; y5++) gB.setEl(x5, y5, E.WATER);
+  for (var x6 = 38; x6 <= 42; x6++) for (var y6 = 30; y6 <= 35; y6++) gB.setEl(x6, y6, E.OIL);
+  var oilCols = 0;
+  for (var t2 = 1; t2 <= 300; t2++) eB.step();
+  for (var x7 = 10; x7 <= 69; x7++) for (var y7 = 35; y7 < 45; y7++) if (gB.element[gB.idx(x7, y7)] === E.OIL) { oilCols++; break; }
+  assert(oilCols >= 10, '油倒在水面上应铺成薄膜（≥10 列有油），实得 ' + oilCols + ' 列');
+});
+
+test('V20. 分子色差：tint 随粒子搬行，水/oil 取五档色阶', function () {
+  var e1 = Engine.create({ w: 40, h: 40, seed: 1337 }), g1 = e1.grid;
+  /* ① 直查：swap 必须连 tint 一起换 */
+  g1.setEl(5, 5, E.WATER); g1.setEl(5, 6, 1);
+  var tA = g1.tint[g1.idx(5, 5)], tB = g1.tint[g1.idx(5, 6)];
+  g1.swap(g1.idx(5, 5), g1.idx(5, 6));
+  assert(g1.tint[g1.idx(5, 6)] === tA && g1.tint[g1.idx(5, 5)] === tB, 'swap 应携带 tint');
+  /* ② 落地验证：一柱水自由下落，色号整体下移（tint 跟着粒子走而非钉在格子上） */
+  var e2 = Engine.create({ w: 40, h: 40, seed: 1337 }), g2 = e2.grid;
+  for (var x = 0; x < g2.w; x++) for (var y = g2.h - 2; y < g2.h; y++) g2.setEl(x, y, E.WALL);
+  for (var y2 = 8; y2 <= 12; y2++) g2.setEl(20, y2, E.WATER);
+  var tintAt = function (gy) { return g2.tint[g2.idx(20, gy)]; };
+  var before = [];
+  for (var y3 = 8; y3 <= 12; y3++) before.push(tintAt(y3));
+  for (var t = 1; t <= 30; t++) e2.step();                    // 水柱落到池底并停住
+  var moved = 0;
+  for (var y4 = 13; y4 <= 17; y4++) {                         // 下落 5 格后原色号应出现在下方
+    for (var b = 0; b < before.length; b++) if (tintAt(y4) === before[b]) moved++;
+  }
+  assert(moved >= 3, '水柱下落后原色号应跟随粒子出现在新位置（≥3 个），实得 ' + moved);
+  /* ③ 五档色阶表齐备且同色相（ION 表已建） */
+  var Pal = YS.Palette;
+  assert(Pal.ION[E.WATER] === 1 && Pal.ION[E.OIL] === 1, 'WATER/OIL 应标记为 ION');
+  var k = E.WATER * 5, distinct = {};
+  for (var s = 0; s < 5; s++) distinct[Pal.ION_R[k + s] + ',' + Pal.ION_G[k + s] + ',' + Pal.ION_B[k + s]] = 1;
+  assert(Object.keys(distinct).length === 5, 'ION 五档色阶应互不相同');
+});
+
+test('V21. 永燃火种动效：EMBER 三档闪烁（用户反馈「完全没有动效」）', function () {
+  var Pal = YS.Palette;
+  var seen = {};
+  for (var t = 0; t < 40; t++) seen[Pal.shadeIndex(10, 10, E.EMBER, t, false)] = 1;
+  assert(Object.keys(seen).length >= 2, 'EMBER  shadeIndex 应随 animTime 变化（≥2 档），实得 ' + Object.keys(seen).length + ' 档');
+});
+
+test('V22. 茎秆导水：浇在植物头顶的水算供水且被消耗（用户反馈「浇水浇不下去，植物就不长了」）', function () {
+  var eng = Engine.create({ w: 60, h: 80, seed: 1337 }), g = eng.grid;
+  for (var x = 0; x < g.w; x++) for (var y = g.h - 3; y < g.h; y++) g.setEl(x, y, E.STONE);   // 地板
+  for (var y2 = 5; y2 < g.h - 3; y2++) { g.setEl(28, y2, E.STONE); g.setEl(31, y2, E.STONE); } // 高井两壁
+  g.setEl(29, g.h - 4, E.SEED);                                // 井底种子（着地、露头）
+  g.setEl(29, g.h - 5, E.WATER);                               // 引|发芽的水
+  /* 阶段 1：根部补水养大（每 50 tick 一滴）—— 模拟用户正常浇根 */
+  for (var t = 1; t <= 700; t++) {
+    eng.step();
+    if (t % 50 === 0) { g.setEl(29, g.h - 5, E.WATER); g.setEl(30, g.h - 5, E.WATER); }
+  }
+  var topY = -1;
+  for (var y = 0; y < g.h; y++) if (g.element[g.idx(29, y)] === E.PLANT) { topY = y; break; }
+  assert(topY > 5 && topY < g.h - 10, '700 tick 根部浇水应长出井中植株（柱顶高出根区 >4 格），实得柱顶 y=' + topY);
+  /* 阶段 2：抽干根区所有水，只浇头顶（距根区 >4 格，旧模型下必休眠） */
+  for (var y3 = 0; y3 < g.h; y3++) if (g.element[g.idx(29, y3)] === E.WATER) g.setEl(29, y3, 1);
+  for (var y4 = topY - 5; y4 <= topY - 1; y4++) g.setEl(29, y4, E.WATER);   // 浇在头顶
+  var w0 = count(g, E.WATER);
+  var grew = 0, wMin = 1e9;
+  for (var t2 = 1; t2 <= 400; t2++) {
+    eng.step();
+    if (t2 % 50 === 0) { var c = count(g, E.WATER); if (c < wMin) wMin = c; }
+    for (var y5 = 0; y5 < topY; y5++) if (g.element[g.idx(29, y5)] === E.PLANT) { grew = topY - y5; break; }
+  }
+  assert(grew >= 3, '浇在头顶的水应经茎秆导水支持生长（再长 ≥3 格），实得 ' + grew + ' 格');
+  assert(wMin < w0, '头顶的浇灌水应被生长消耗（水量下降），实得 min=' + wMin + ' vs 浇前=' + w0);
+});
+
+/* ============================================================
+  输出
+  ============================================================ */
 console.log('\nYuansu Pixel Sandbox — 单元测试\n' + '='.repeat(48));
 console.log(lines.join('\n'));
 console.log('='.repeat(48));

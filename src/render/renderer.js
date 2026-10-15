@@ -91,9 +91,16 @@
             p = y * w + x;
             e = el[p];
             if (e === 1) continue;
-            shade = Palette.shadeIndex(x, y, e, t, hc);
-            var k3 = e * 3 + shade;
-            sr = R3[k3]; sg = G3[k3]; sb = B3[k3];
+            /* v1.4.1 分子色差：液体（WATER/OIL）按 tint 取五档色阶（色号随粒子搬行），
+             * 其余元素走原三档确定性抖动。 */
+            if (Palette.ION[e]) {
+              var k5 = e * 5 + grid.tint[p];
+              sr = Palette.ION_R[k5]; sg = Palette.ION_G[k5]; sb = Palette.ION_B[k5];
+            } else {
+              shade = Palette.shadeIndex(x, y, e, t, hc);
+              var k3 = e * 3 + shade;
+              sr = R3[k3]; sg = G3[k3]; sb = B3[k3];
+            }
             a = Palette.ALPHA[e];
             if (a >= 1) {
               buf32[p] = pack(255, sr, sg, sb);

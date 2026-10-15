@@ -217,7 +217,12 @@
     MAX_COLONY: 512,           // 单株规模上限
     SPREAD_WATER_P: 0.01       // 保留（向水面蔓延概率；已不产生新植物，见 biology.js）
   };
-  var SOIL = { MOISTURE_MAX: 200, MOISTURE_GAIN: 2, DRY_RATE: 1 };
+  /* v1.4.1 重调（配合液体表面流修复）：旧值 GAIN=2 / MAX=200 / DRY=1 下，
+   * 水滩流走后土壤 200 tick 就干透，植物喝不到水就停长（V6 实测停在第 21-23 格）。
+   * 物理上土壤是真正的蓄水层（毛细蓄水，以天计地缓慢变干），故：
+   *   蓄水上限 200→400、吸水 2→6/tick、变干 1→0.25/tick（约 1600 tick 的长效水库）。
+   * 效果：一次浇透 → 植物靠土壤储备持续长到毛细上限，干透后休眠，复水即恢复。 */
+  var SOIL = { MOISTURE_MAX: 400, MOISTURE_GAIN: 6, DRY_RATE: 0.25 };
   var VIRUS = { INFECT_PLANT_P: 0.05, INFECT_SEED_P: 0.03 };
   var CLONE = { COPY_INTERVAL: 4, MAX_CELLS: 2000 };
   var SPRING = { EMIT_INTERVAL: 6, MAX_CELLS: 1500 };
@@ -291,7 +296,10 @@
    *       且 左右下三格都没有同种液体（即孤立液滴） → 水平铺展概率 × FILM_SPREAD_F。
    *   连续液膜（左右或下方有同类）不受影响 → 找平、连通器、灌注等宏观行为完全保留。 */
   var LIQUID = {
-    FILM_SPREAD_F: 0.12        // 孤立薄液膜的水平铺展折扣（1 = 关闭此阻尼）
+    FILM_SPREAD_F: 0.12,       // 孤立薄液膜的水平铺展折扣（1 = 关闭此阻尼）
+    /* v1.4.1「轻液爬行」：漂浮在更重液体上的轻液（油膜/水面）沿界面铺展的概率折扣。
+     * 表面张力驱动（非重力沉降），故不受 mediumGate 阻尼；0.3 实测油膜约 6 tick/格铺开。 */
+    CREEP_F: 0.3
   };
 
   var api = {

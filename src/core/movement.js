@@ -101,11 +101,16 @@
     return 0;
   }
 
-  /* 介质阻尼闸门（v1.2.0）：
+  /* 介质阻尼闸门（v1.2.0 → v1.4.1 修订）：
    * 先按"正下方介质"算出浮力因子 f，再以概率 f 决定本格这一 tick 是否允许移动。
    * 为什么用闸门而不是在每个方向各乘一次 f：后者会让正下(0.10)+斜下(0.09×2)+水平(0.072×2)
    * 叠加回 ~0.36，实测"水沉油"只比真空慢 39%，肉眼看不出差别 —— 正是用户反馈的问题。
-   * 闸门方式下整体速度严格 = f × 原速度（水沉油 0.10，肉眼是"明显慢十倍"）。 */
+   * 闸门方式下整体速度严格 = f × 原速度（水沉油 0.10，肉眼是"明显慢十倍"）。
+   *
+   * v1.4.1「漂浮旁路」：若本格**轻于**正下方介质（油浮在水上、蒸汽浮在水上），
+   * 它根本不沉降，Stokes 沉降阻尼不适用 —— 油膜在水面的铺展由表面张力驱动，
+   * 旧代码按 0.11 的沉降因子把它 89% 的 tick 直接掐掉，油倒在水面上就"堆成塔"（用户实测）。
+   * 轻于下方 → 闸门返回 1（不阻尼）；下沉移动本就已被 downFactor 的密度判据挡死，不会破坏分层。 */
   function mediumGate(grid, i, y, w, h, dEff, amb, selfId) {
     if (!BUOY.ENABLE) return 1;
     if (y >= h - 1) return 1;
@@ -117,6 +122,10 @@
     var diff = dEff - d;
     if (diff < 0) diff = -diff;
     if (diff < 1e-6) return 0;                    // 同种同温介质 → 净浮力 0，静止
+    /* 漂浮旁路仅对「下方是液体」成立：油膜在水面、蒸汽在水面。粉末下方（水在沙/土上）
+     * 仍按沉降因子阻尼 —— 水在散土上是缓慢渗润而非一冲即散（V6 实测：放开后水会冲离
+     * 苗根导致停长，故收紧）。下沉移动本就被 downFactor 密度判据挡死，旁路不破坏分层。 */
+    if (dEff < d - 1e-6 && T.state === 'liquid') return 1;  // 轻于下方液体（漂浮）→ 不按沉降阻尼
     var f = diff / dEff;
     var lo = (tj === selfId) ? BUOY.SAME_CONVECT_MIN_F : BUOY.MIN_F;
     return f < lo ? lo : f;
@@ -221,8 +230,8 @@
         if (fu >= 1) { swapMove(grid, i, j, tick); return; }
         if (fu > 0 && RNG.hash01(x, y, e * 101 + tick) < fu) { swapMove(grid, i, j, tick); return; }
       }
-      if (stalled) return;                                    // 同种同温：不下沉、不侧移
-      /* 3. 斜下 p = mobility */
+      /* 3. 斜下 p = mobility（v1.4.1：stalled 时只允许落入 AIR —— 塔身从顶部层层塌落、
+       *    表面自动找平；绝不进入其他液体，那类移动仍由 mediumGate 的沉降阻尼管） */
       if (y < h - 1) {
         var order2 = RNG.hash01(x, y, e * 163 + tick) < 0.5 ? -1 : 1;
         for (s = 0; s < 2; s++) {
@@ -230,7 +239,7 @@
           nx = x + dx;
           if (nx >= 0 && nx < w) {
             j = i + dx + w;
-            if (downFactor(grid, j, dEff, amb, e) > 0 &&
+            if (downFactor(grid, j, dEff, amb, e) > 0 && (!stalled || el[j] === 1) &&
               RNG.hash01(x, y, e * 211 + tick + s) < E.mobility) {
               swapMove(grid, i, j, tick); return;
             }
@@ -239,15 +248,18 @@
       }
       /* 4. 水平铺展 p = mobility × 0.8 × filmF（阻尼已由上方的 mediumGate 统一施加）
        *
-       *    filmF —— 薄液膜阻尼（v1.3.0，docs/PHYSICS-AIR.md 附录 D）。
-       *    旧代码对一切液体一视同仁，于是「1 格孤立水滴」也以 mobility×0.8 ≈ 0.5/tick 横向狂奔，
-       *    等效约 30 格/秒 —— 一滴水会在 1200 tick 内沿底行随机游走 40 多格。这带来两条实测 FAIL：
-       *      · SEED×WATER small：水游走离开种子 → 根区无湿源 → 永不发芽；
-       *      · OIL×FIRE   small：油游走离开火苗 → 火焰失去锚定后上浮 → 点不着。
-       *    物理上，重力驱动的横向流量 ∝ h²（h = 液层厚度，泊肃叶流）：被上方液体压着的内部格
-       *    横向流速大；暴露在气体下的自由表面薄层受壁面摩擦与表面张力阻滞，几乎不流。
-       *    判据：上方无液体压力 **且** 左右下均无同种液体（孤立液滴）→ 乘 FILM_SPREAD_F；
-       *    连续液膜（左右/下方有同类）照旧全速 → 找平、连通器、灌注等宏观行为不受影响。 */
+       *    filmF —— 薄液膜阻尼（v1.3.0，docs/PHYSICS-AIR.md 附录 D）……
+       *
+       *    v1.4.1 两处修订（修复"水/油像沙子一样堆在水面上"，用户实测反馈）：
+       *    ① stalled（下方同种同温）不再一票否决侧移 —— 只允许铺向 AIR。
+       *       这是"倒水入池不堆塔"的关键：旧代码让任何静置在同种液体上的格子彻底冻结，
+       *       落到水面的水无处可去（同种不互换、下方同温不能沉），于是垂直堆叠成塔。
+       *       允许向 AIR 的表面流后：持续倒水 → 每格落地即向旁边铺开，池面保持水平；
+       *       已形成的塔 → 顶层向 AIR 塌落、层层瓦解。同种格依然永不互换（enterableSide
+       *       同密度禁止 + 下沉 stalled 禁止）→ 不会 reintroduce 自我搅拌。
+       *    ② creep —— 轻液铺在重液上（油膜沿水面爬行）：目标格是**更重的液体**且
+       *       本格正下方就是它（即本格漂浮在它上面）时，允许以折扣概率挤过去。
+       *       表面张力驱动，不受沉降阻尼；重液被挤开后自身会沉回（密度判据），不失分层。 */
       var filmF = 1;
       if (LIQUID && LIQUID.FILM_SPREAD_F < 1) {
         var upId = (y > 0) ? el[i - w] : 1;
@@ -265,7 +277,12 @@
         nx = x + dx;
         if (nx >= 0 && nx < w) {
           j = i + dx;
-          if (enterableSide(dens, el[j]) && RNG.hash01(x, y, e * 307 + tick + s) < E.mobility * 0.8 * filmF) {
+          var tj2 = el[j];
+          var creep = !stalled && tj2 !== 1 && ELS[tj2].state === 'liquid' &&
+            ELS[tj2].density > dens && did === tj2;          // 漂浮在更重液体上 → 允许爬行
+          var sideOK = creep || (enterableSide(dens, tj2) && (!stalled || tj2 === 1));
+          if (sideOK && RNG.hash01(x, y, e * 307 + tick + s) <
+            E.mobility * 0.8 * (creep ? LIQUID.CREEP_F : 1) * filmF) {
             swapMove(grid, i, j, tick); return;
           }
         }

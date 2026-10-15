@@ -21,6 +21,12 @@
       latent: new Uint8Array(n),
       moveStamp: new Uint32Array(n),
       reactStamp: new Uint32Array(n),
+      /* v1.4.1「分子色差」tint：每格 0-4 的色号，**随 swap/moveTo 一起搬行** ——
+       * 渲染器对液体（WATER/OIL）用它选 5 档色阶，于是每个"水分子"有细微色差，
+       * 流动时色块跟着粒子走，内部对流一眼可辨（用户："每个水分子颜色可以有细微的
+       * 差异，这样他们在流动的时候我就能一眼看出来内部是怎么在流动的"）。
+       * 纯 cosmetic：不影响任何物理/测试逻辑，不序列化。 */
+      tint: new Uint8Array(n),
 
       tickId: 1,
 
@@ -50,19 +56,19 @@
       this.age[i] = 0;
     };
 
-    /* 交换两格的全部物质状态（质量/能量守恒的移动实现，§13.1） */
+    /* 交换两格的全部物质状态（质量/能量守恒的移动实现，§13.1；tint 随行——分子色差） */
     g.swap = function (i, j) {
-      var e = this.element, t = this.temp, a = this.age, l = this.latent;
-      var te = e[i], tt = t[i], ta = a[i], tl = l[i];
-      e[i] = e[j]; t[i] = t[j]; a[i] = a[j]; l[i] = l[j];
-      e[j] = te; t[j] = tt; a[j] = ta; l[j] = tl;
+      var e = this.element, t = this.temp, a = this.age, l = this.latent, tn = this.tint;
+      var te = e[i], tt = t[i], ta = a[i], tl = l[i], ttin = tn[i];
+      e[i] = e[j]; t[i] = t[j]; a[i] = a[j]; l[i] = l[j]; tn[i] = tn[j];
+      e[j] = te; t[j] = tt; a[j] = ta; l[j] = tl; tn[j] = ttin;
     };
 
     /* 将 src 移入空位 dst（dst 必须是 EMPTY），源格变为 EMPTY 并归环境温 */
     g.moveTo = function (src, dst, ambient) {
-      var e = this.element, t = this.temp, a = this.age, l = this.latent;
-      e[dst] = e[src]; t[dst] = t[src]; a[dst] = a[src]; l[dst] = l[src];
-      e[src] = 1; t[src] = ambient; a[src] = 0; l[src] = 0;
+      var e = this.element, t = this.temp, a = this.age, l = this.latent, tn = this.tint;
+      e[dst] = e[src]; t[dst] = t[src]; a[dst] = a[src]; l[dst] = l[src]; tn[dst] = tn[src];
+      e[src] = 1; t[src] = ambient; a[src] = 0; l[src] = 0; tn[src] = 0;
     };
 
     /* 填充 4 邻域索引到 g.nb4，越界为 -1；顺序 [W,E,N,S] */
@@ -96,18 +102,25 @@
       return c;
     };
 
-    /* 全清：全部 EMPTY，温度设为环境温 */
-    g.clear = function (ambient) {
-      var a = ambient === undefined ? 20 : ambient;
-      this.element.fill(1);
-      this.temp.fill(a);
-      this.nextTemp.fill(a);
-      this.age.fill(0);
-      this.latent.fill(0);
-      this.moveStamp.fill(0);
-      this.reactStamp.fill(0);
-      this.tickId = 1;
-    };
+  /* 全清：全部 EMPTY，温度设为环境温 */
+  g.clear = function (ambient) {
+    var a = ambient === undefined ? 20 : ambient;
+    this.element.fill(1);
+    this.temp.fill(a);
+    this.nextTemp.fill(a);
+    this.age.fill(0);
+    this.latent.fill(0);
+    this.moveStamp.fill(0);
+    this.reactStamp.fill(0);
+    /* tint 重洗牌：确定性整数哈希（不依赖 RNG 模块，避免加载顺序耦合）→ 0-4 */
+    var tn = this.tint;
+    for (var q = 0; q < this.n; q++) {
+      var hh = Math.imul(q + 0x9e3779b9, 2654435761) >>> 0;
+      hh ^= hh >>> 15;
+      tn[q] = hh % 5;
+    }
+    this.tickId = 1;
+  };
 
     /* 将 nextTemp 提交回官方 temp（四舍五入 + 钳制，§13.4） */
     g.commitTemp = function (minT, maxT) {

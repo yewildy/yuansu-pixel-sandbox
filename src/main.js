@@ -14,6 +14,11 @@
 
   var QUICK = [ID.SAND, ID.WATER, ID.FIRE, ID.STONE, ID.WOOD, ID.OIL, ID.LAVA, ID.ICE, ID.SEED];
 
+  /* v1.4.1 游戏内版本标识（用户：「在推送游戏内标上版本以及最后修改时间，这样我才知道我玩的是哪一版」）
+   * 每次发布前手动同步此处 + index.html 的 ?v= 缓存破坏参数。 */
+  var VERSION = { v: 'v1.4.1', built: '2026-10-15' };
+  YS.VERSION = VERSION;
+
   function initialTemp(id) {
     switch (id) {
       case ID.LAVA: return 1200;
@@ -246,6 +251,10 @@
     /* ---------- i18n 初始化 ---------- */
     I18N.setLang(I18N.detect());
     YS.Toolbar.refresh(app);
+
+    /* 版本徽章（顶栏）：版本号 + 最后修改时间 */
+    var verBadge = document.getElementById('ver-badge');
+    if (verBadge) verBadge.textContent = VERSION.v + ' · ' + VERSION.built;
 
     /* 暴露给调试 */
     root.__yuansu = app;
