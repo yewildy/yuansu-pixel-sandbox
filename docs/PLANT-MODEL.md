@@ -478,3 +478,40 @@ Powder Game 的 Vine 无耗水、无规模上限，可以无限铺；本作的�
    埋在土/沙/实体中的种子四邻皆非空非水 → 照旧不发。
 
 实测 SEED×WATER 三种子发芽 77 / 82 / 72 株；V6（主柱 35）/V13/V22 全部保持。
+
+# 14. ★「种子 → 树」模型（v1.5.0）
+
+**用户要求**：「我也没有看到分叉式生长，也不会长出木头，关于这一点先调查出原版游戏是怎么区分藤蔓和木头的，再修改。」
+
+## 14.1 原版调研结论（Dan-Ball Powder Game / The Powder Toy）
+
+| 原版事实 | 出处 |
+| --- | --- |
+| **SEED** 撒在粉末（沙）上、**浇水**后长成**树** | PG wiki: Seed |
+| **树干与树枝 = WOOD**（木质/半固体；**燃烧极慢**） | PG wiki: Wood (also called tree) |
+| **树叶 = PLANT**（绿色；燃烧快） | Powder Toy wiki: 「tree is composed out of wood and goo for branches and **plant for leaves**」 |
+| **树的大小由种子吸收的水量决定**（最多 31 格水） | Powder Toy: 「size controlled by the amount of water the seed absorbed」 |
+| **树枝按 5 个方向随机抽枝**（±90°/±45°/0°） | Powder Toy: branch bitmask |
+| **VINE（藤蔓）是另一个元素**：只向侧上和上生长、**从不向下**、烧得极快 | PG wiki: Vine |
+
+## 14.2 本作实现（biology.js::treeGrow）
+
+| 环节 | 规则 | 参数 |
+| --- | --- | --- |
+| 吸胀 | 萌发中的种子把**湿润半径内**的水（或湿土水分）吸进体内 → `latent` = 含水量 | `ABSORB_P=0.03`、`ABSORB_GAIN=24` |
+| 萌发 | 含水量 ≥ GERM_WATER 且原四条件成立 → **SEED → WOOD（latent=1 树干）**；体内库存水本身即算供水 | `GERM_WATER=24` |
+| 生长势 | 树干 carrying 预算 = 含水量 × VIGOR_PER_W（存 `age`；静态固体 age 不参与寿命） | `VIGOR_PER_W=12` |
+| 树干 | 向上一格并把剩余预算**带上去**（本格随即硬化 `latent=0`）；概率 0.30/tick（≈3.3 tick/格） | `TRUNK_P`、`COST=8` |
+| 抽枝 | 每次生长按 BRANCH_P 在**斜上方**生一根枝（`latent=2`），带走 45% 预算；枝可再抽子枝 | `BRANCH_P=0.22`、`SUB_BRANCH_P` |
+| 树叶 | 每格按 LEAF_P 在周围空位撒 **PLANT（latent=2，不生长）**；**树干正上方不长叶**（否则堵死自己的生长路径） | `LEAF_P=0.45` |
+| 硬化 | 预算 ≤ MIN_VIGOR → `latent=0`，全树变成普通 WOOD（惰性、可燃、烧得慢）——即"树长成了" | `MIN_VIGOR=16` |
+| 等待 | 上方/斜上被挡（如种子头顶压着水）→ 原地等待、**不消耗预算** | — |
+
+**PLANT 元素保留原行为**：直接绘制的 PLANT 仍按 §4（向上生长）+ §11（贴地蔓）生长；
+只有 `latent=2` 的叶格不生长。于是"藤蔓"与"树"在同一作里分工明确 —— 与原文一致。
+
+**实测**（`_diag_tree.js`，土壤 + 种子 + 一片水）：树干 1 + 活枝 2 + 硬化木 24 + 叶 34，
+包围盒 **7 宽 × 22 高**，形态为"主干 + 两根斜生分枝 + 树冠"。
+
+**已知边界**：`latent` 不入存档（见 ADR/存档说明）→ 读档后活木退化为惰性木；
+树高受网格与预算限制，无 CAPILLARY_HEAD 限制。

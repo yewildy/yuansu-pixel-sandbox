@@ -44,7 +44,7 @@
      * 与"对流团持续拍打表面"的离散近似相符。⚠ 本项为 modeling 近似，该 pass 不守恒
      * （能量来自火焰化学 reservoir），详见 COMBUSTION-MODEL.md。 */
     GAS_FLUX_MIN_T: 100,        // 热气体参与接触传热的最低温度（°C）
-    GAS_CONTACT_K: 0.05,        // 热气体 → 4 邻域非气体格的传热系数（每 tick；0.02→0.05 见上注）
+    GAS_CONTACT_K: 0.08,        // 热气体 → 4 邻域非气体格的传热系数（每 tick；0.02→0.05 见上注）
 
     /* §14.2b 导热模型（v1.2.0 重写，见 docs/PHYSICS-AIR.md §14）
      * 旧模型 = 对称温度交换（守恒 ΣT），等价于"所有格子热容相等"：
@@ -86,7 +86,9 @@
     COND_COEF: 0.00015,      // 有核凝结系数
     COND_P_MAX: 0.02,
     HOMO_F: 0.2,             // 无核（四周皆气体/真空）→ 均相成核折扣，等效 0.00003
-    NUCLEUS_COLD_T: 95       // 冷凝核温度低于此值才算"冷核"（热水面 ≥95℃ 不成核）
+    NUCLEUS_COLD_T: 95,      // 冷凝核温度低于此值才算"冷核"（热水面 ≥95℃ 不成核）
+    /* v1.4.3：低于此温度即视为"深度过冷"，无需冷核、按全速率凝结（用户实测："一堆只有 20 度的水蒸气"）。 */
+    HOMO_FULL_T: 50
   };
   var ICE = { MELT_P_BASE: 0.05, MELT_P_SLOPE: 0.005, MELT_P_MAX: 0.50 };
   var SNOW = { MELT_P_BASE: 0.08, MELT_P_SLOPE: 0.005, MELT_P_MAX: 0.50 };
@@ -137,7 +139,7 @@
      * FIRE 格 → 4 邻域非气体格的离散近似传热（火舌舔舐固体/液体的直接加热）。
      * 只加热不冷却（源温 ≤ 目标温时跳过），公式天然保证不超过热源温度。
      * ⚠ 该 pass 不守恒（能量来自燃料燃烧的化学 reservoir），见 docs/COMBUSTION-MODEL.md。 */
-    CONTACT_K: 0.06,
+    CONTACT_K: 0.10,
     /* 兼容保留：旧「一次性耗氧」残余灰概率表（新模型改由 FUEL.channelP 决定，此项不再被 agePass 使用） */
     RESIDUE_ASH: { WOOD: 0.6, PLANT: 0.3, COAL: 0.5, OIL: 0.2, GUNPOWDER: 0.1, GAS: 0.0 }
   };
@@ -187,7 +189,8 @@
     DEATH_COLD_T: -10,
     GROUND_REQUIRED: true,     // 新增：发芽必须着地（B4 第一道闸）
     CHAIN_MAX: 8,              // v1.4.1：着地判据的下探上限 —— 压在同类种子上的种子，下方 8 格内连到地面即算着地
-    MOIST_RADIUS: 2            // 新增：湿度检测半径
+    ABSORB_P: 0.030,           // v1.4.3：吸胀提速（0.010→0.030）—— 水滩很快流走，吸水慢了种子攒不够含水量，长不出像样的树
+    MOIST_RADIUS: 3            // v1.4.2：2→3 —— 单格水滴会在表面缓慢游走，半径 3 让"湿"判据更贴合毛细浸润
   };
   var PLANT = {
     /* v1.4.0：GROW_P 0.02 → 0.08（向上生长加速，用户实测"长得太慢"）。
@@ -223,6 +226,26 @@
    * 物理上土壤是真正的蓄水层（毛细蓄水，以天计地缓慢变干），故：
    *   蓄水上限 200→400、吸水 2→6/tick、变干 1→0.25/tick（约 1600 tick 的长效水库）。
    * 效果：一次浇透 → 植物靠土壤储备持续长到毛细上限，干透后休眠，复水即恢复。 */
+  /* v1.4.3 ★「种子 → 树」（按原版 Powder Game / Powder Toy 机制，用户要求先调研再改）：
+   *   原版：SEED 撒在粉末/沙上、浇水 → 长出一棵树；**树干与树枝是 WOOD**（木质、烧得慢），
+   *   **树叶是 PLANT**（绿色、烧得快）；**树的大小由种子吸收的水量决定**（最多 31 格水）；
+   *   树枝按 5 个方向（±90°/±45°/0°）随机抽枝；长成后（预算耗尽）木头硬化。
+   *   本作实现：种子把邻近的水吸进体内（latent = 含水量，0-255）→ 含水量转成**生长势预算**
+   *   （存进 WOOD 的 age，Uint16）→ 树干逐格上长并把预算"带上去"、按概率抽枝/生叶 →
+   *   预算耗尽后 latent 归 0（= 普通木头，惰性、可燃、烧得慢）。 */
+  var TREE = {
+    ABSORB_GAIN: 24,     // 每吸 1 格水增加的含水量
+    GERM_WATER: 24,      // 萌发所需最低含水量（≈1 格水）
+    VIGOR_PER_W: 12,     // 含水量 → 生长势预算
+    TRUNK_P: 0.30,       // 树干向上生长概率 / tick
+    BRANCH_P: 0.22,      // 每次树干生长时的抽枝概率
+    BRANCH_SHARE: 0.45,  // 抽枝转移给树枝的预算比例
+    SUB_BRANCH_P: 0.06,  // 树枝再抽子枝概率
+    LEAF_P: 0.45,        // 生叶概率（树干/树枝周围长出 PLANT 叶）
+    COST: 8,             // 每格生长消耗的生长势
+    MIN_VIGOR: 16        // 剩余预算低于此值 → 停止生长（树"长成"）
+  };
+
   var SOIL = { MOISTURE_MAX: 400, MOISTURE_GAIN: 6, DRY_RATE: 0.25 };
   var VIRUS = { INFECT_PLANT_P: 0.05, INFECT_SEED_P: 0.03 };
   var CLONE = { COPY_INTERVAL: 4, MAX_CELLS: 2000 };
@@ -297,7 +320,19 @@
    *       且 左右下三格都没有同种液体（即孤立液滴） → 水平铺展概率 × FILM_SPREAD_F。
    *   连续液膜（左右或下方有同类）不受影响 → 找平、连通器、灌注等宏观行为完全保留。 */
   var LIQUID = {
-    FILM_SPREAD_F: 0.12,       // 孤立薄液膜的水平铺展折扣（1 = 关闭此阻尼）
+    /* v1.4.3：连通水体（左右下任一同类/同类在下方）的水平铺展系数 x1.15 →
+     * p = mobility×1.15 → 封顶 1 格/tick（旧值一律 0.8×mobility=0.72）。
+     * 配合 CASCADE 冲流级联，大池找平的前沿推进速度约提升 2-3 倍。 */
+    FLOW_K: 1.15,
+    /* v1.4.3 冲流级联：铺向 AIR 后若脚下仍空，同 tick 再落一格（等效 2 格/tick）。 */
+    CASCADE: true,
+    /* v1.4.3 水面滑移：已在液面上的表面格，前方仍为 AIR 时可再滑一格（≤2 格/tick）。 */
+    SLIDE2: true,
+    /* v1.4.2：0.12 → 0.04。孤立单滴（上方无液体压力、左右下皆无同类）在真实表面上被
+     * **接触角滞后**钉住，几乎不流；旧值 0.12 仍容许 ~0.086 格/tick 的扩散，实测 400 tick
+     * 漂移约 10 格 —— 配对实验 SEED×WATER small 的"单格水流失"、OIL×FIRE small 的
+     * "油滴游走失去锚定"皆源于此。收紧后单滴基本停在原地（连续液膜的找平/灌注不受影响）。 */
+    FILM_SPREAD_F: 0.04,       // 孤立薄液膜的水平铺展折扣（1 = 关闭此阻尼）
     /* v1.4.1「轻液爬行」：漂浮在更重液体上的轻液（油膜/水面）沿界面铺展的概率折扣。
      * 表面张力驱动（非重力沉降），故不受 mediumGate 阻尼；0.3 实测油膜约 6 tick/格铺开。 */
     CREEP_F: 0.3
@@ -308,7 +343,7 @@
     WATER: WATER, STEAM: STEAM, ICE: ICE, SNOW: SNOW, LAVA: LAVA, STONE: STONE,
     GLASS: GLASS, METAL: METAL, SALT: SALT, SAND: SAND, LN2: LN2,
     FIRE: FIRE, FUEL: FUEL, ACID: ACID, TNT: TNT, EMBER: EMBER,
-    SEED: SEED, PLANT: PLANT, SOIL: SOIL, VIRUS: VIRUS, CLONE: CLONE, SPRING: SPRING, WIND: WIND
+    SEED: SEED, PLANT: PLANT, SOIL: SOIL, TREE: TREE, VIRUS: VIRUS, CLONE: CLONE, SPRING: SPRING, WIND: WIND
   };
 
   root.YS = root.YS || {};

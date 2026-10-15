@@ -256,33 +256,50 @@
       contactFlux._tabLen = 32;
     }
     var isGas = contactFlux._tab.gas, isFuel = contactFlux._tab.fuel;
-    var i, x, y, row, e, Ts, K, j, dT;
+    var i, x, y, row, e, Ts, K, j, dT, live = -1, Reac = root.YS.Reactions;
 
     for (y = 0; y < h; y++) {
       row = y * w;
       for (x = 0; x < w; x++) {
         i = row + x;
         e = el[i];
-        if (e === FIRE) { K = kFire; }
+        var isFire = (e === FIRE);
+        if (isFire) { K = kFire; live = -1; }
         else if (isGas[e] && temp[i] >= minGasT) { K = kGas; }
         else continue;
         Ts = temp[i];                       // 源温取已提交温度场（对重锚火焰即燃烧温度）
-        /* 4 邻域非气体、非可燃物格加热（越界邻格跳过） */
+        /* 4 邻域非气体格加热（越界邻格跳过）。
+         * v1.4.3：**通气良好的火焰也加热可燃物**（惰性判一次 hasOxygen）。
+         * 为什么必须这样（用户实测"用火加热烧水还是太慢"的根因）：
+         * 旧实现把可燃物一律排除在传热目标外，点火只能靠 spreadP≈0.05/tick 的掷签
+         * （配对实验 T6.3 实测 8 个种子里 2 个点不着），于是"锅下生火 → 木柴点不着 →
+         * 火 40 tick 就灭 → 锅几乎不热"。物理上火焰接触燃料当然会烤热它（火焰前沿）。
+         * 红线为什么仍安全：判据是**燃料自身通气（hasOxygen(燃料格)）**才加热 ——
+         * 厚燃料块内部（无氧）、密封盒内（无氧）的燃料都不被烤热 → 不点燃 → 自熄；
+         * 而露头的燃料（有氧）被火焰烤到燃点后正常引燃。N1-4/N1-8/V9 红线全部保持。 */
         if (x > 0) {
           j = i - 1; e = el[j];
-          if (!isGas[e] && !isFuel[e]) { dT = Ts - nt[j]; if (dT > 0) nt[j] += K * dT; }
+          if (!isGas[e] && (!isFuel[e] || (isFire && Reac && Reac.hasOxygen(grid, j)))) {
+            dT = Ts - nt[j]; if (dT > 0) nt[j] += K * dT;
+          }
         }
         if (x < w - 1) {
           j = i + 1; e = el[j];
-          if (!isGas[e] && !isFuel[e]) { dT = Ts - nt[j]; if (dT > 0) nt[j] += K * dT; }
+          if (!isGas[e] && (!isFuel[e] || (isFire && Reac && Reac.hasOxygen(grid, j)))) {
+            dT = Ts - nt[j]; if (dT > 0) nt[j] += K * dT;
+          }
         }
         if (y > 0) {
           j = i - w; e = el[j];
-          if (!isGas[e] && !isFuel[e]) { dT = Ts - nt[j]; if (dT > 0) nt[j] += K * dT; }
+          if (!isGas[e] && (!isFuel[e] || (isFire && Reac && Reac.hasOxygen(grid, j)))) {
+            dT = Ts - nt[j]; if (dT > 0) nt[j] += K * dT;
+          }
         }
         if (y < h - 1) {
           j = i + w; e = el[j];
-          if (!isGas[e] && !isFuel[e]) { dT = Ts - nt[j]; if (dT > 0) nt[j] += K * dT; }
+          if (!isGas[e] && (!isFuel[e] || (isFire && Reac && Reac.hasOxygen(grid, j)))) {
+            dT = Ts - nt[j]; if (dT > 0) nt[j] += K * dT;
+          }
         }
       }
     }

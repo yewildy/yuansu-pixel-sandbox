@@ -20,7 +20,7 @@
   var ELS = Elements.ELEMENTS;
 
   var SEED = ID.SEED, PLANT = ID.PLANT, WATER = ID.WATER, SOIL = ID.SOIL,
-    ASH = ID.ASH, DUST = ID.DUST, AIR = 1;
+    WOOD = ID.WOOD, ASH = ID.ASH, DUST = ID.DUST, AIR = 1;
 
   /* ---------- 模块级缓存（按 n 惰性分配） ---------- */
   var cachedN = -1;
@@ -198,6 +198,78 @@
     return cnt;
   }
 
+  /* v1.4.3 ★树生长（docs/PLANT-MODEL.md §14）：
+   * 活木格（WOOD + latent 1/2）携带"生长势预算"（存 age）：
+   *   · 树干（latent=1）向上长一格并把剩余预算**带上去**（本格随即硬化 latent=0）；
+   *   · 按 BRANCH_P 抽枝：斜上方生出一根**树枝**（latent=2），带走一部分预算；
+   *   · 树枝（latent=2）沿斜上方继续生长，可按 SUB_BRANCH_P 再抽子枝；
+   *   · 每格生长按 LEAF_P 在周围空位撒**树叶**（PLANT latent=2，不生长）；
+   *   · 预算耗尽（≤MIN_VIGOR）→ 整棵树硬化成普通 WOOD（惰性、可燃、烧得慢）。
+   * 树的大小因此完全由种子吸到的水量决定 —— 与 Powder Toy「size controlled by the amount
+   * of water the seed absorbed」一致。 */
+  function treeGrow(grid, i, x, y, tick, amb, isTrunk) {
+    var el = grid.element, temp = grid.temp, age = grid.age, lat = grid.latent;
+    var w = grid.w, T = Balance.TREE;
+    var vigor = age[i];
+    if (vigor <= T.MIN_VIGOR) { lat[i] = 0; age[i] = 0; return; }        // 长成 → 硬化
+    /* 生叶：周围 8 邻域空位长一片叶（不占预算） */
+    if (RNG.hash01(x, y, tick * 43 + 31) < T.LEAF_P) {
+      var nbs = grid.fill8(i);
+      for (var k = 0; k < 8; k++) {
+        var n = nbs[k];
+        if (n < 0 || el[n] !== 1) continue;
+        /* v1.4.3：**树干正上方不长叶** —— 否则叶会堵住树干自己的生长路径
+         * （实测：树干被自己头顶的叶子卡死，只长到 2 格就停）。 */
+        if (isTrunk && n === i - w) continue;
+        el[n] = PLANT; lat[n] = 2; temp[n] = temp[i]; age[n] = 0; rootedStamp[n] = 0;
+        break;
+      }
+    }
+    var p = isTrunk ? T.TRUNK_P : T.TRUNK_P * 0.85;
+    var up = (y > 0) ? (i - w) : -1;
+    if (up >= 0 && el[up] === 1 && RNG.hash01(x, y, tick * 47 + 13) < p) {
+      var nv = vigor - T.COST;
+      el[up] = WOOD; lat[up] = isTrunk ? 1 : 2; age[up] = nv > 0 ? nv : 0; temp[up] = temp[i];
+      var bp = isTrunk ? T.BRANCH_P : T.SUB_BRANCH_P;
+      if (nv > T.MIN_VIGOR * 2 && RNG.hash01(x, y, tick * 53 + 17) < bp) {   // 抽枝（斜上一侧）
+        var dir = RNG.hash01(x, y, tick * 59 + 19) < 0.5 ? -1 : 1;
+        var bx = x + dir;
+        if (bx >= 0 && bx < w) {
+          var bn = (y - 1) * w + bx;
+          if (el[bn] === 1) {
+            var bv = Math.floor(nv * T.BRANCH_SHARE);
+            el[bn] = WOOD; lat[bn] = 2; age[bn] = bv; temp[bn] = temp[i];
+            age[up] = nv - bv;
+          }
+        }
+      }
+      lat[i] = 0; age[i] = 0;                                  // 预算上移，本格硬化
+      return;
+    }
+    /* 树枝：斜上方生长（维持"横向铺开"的树冠形态） */
+    if (!isTrunk && y > 0) {
+      var d2 = RNG.hash01(x, y, tick * 61 + 23) < 0.5 ? -1 : 1;
+      for (var s2 = 0; s2 < 2; s2++) {
+        var dd = s2 === 0 ? d2 : -d2;
+        var nx2 = x + dd;
+        if (nx2 < 0 || nx2 >= w) continue;
+        var nj = (y - 1) * w + nx2;
+        if (el[nj] !== 1) continue;
+        if (RNG.hash01(x, y, tick * 67 + 29) < p) {
+          var nv2 = vigor - T.COST;
+          el[nj] = WOOD; lat[nj] = 2; age[nj] = nv2 > 0 ? nv2 : 0; temp[nj] = temp[i];
+          lat[i] = 0; age[i] = 0;
+          return;
+        }
+      }
+    }
+    /* 被挡住（上方/斜上无空位，例如种子头顶还压着水或土）：**原地等待、不消耗预算**。
+     * v1.4.3 实测教训：初版在这里每 tick 扣 1 点预算，种子头顶的水要几十上百 tick 才排开，
+     * 树的预算在"等待"期间被白白耗光 → 只长出 1 格木头 5 片叶就硬化（树苗夭折）。
+     * 空间一旦腾出即继续生长；预算只由真实生长消耗 —— 与"树的大小由吸水量决定"一致。 */
+    return;
+  }
+
   function lifePass(grid, ctx) {
     ensure(grid.n);
     var tick = ctx.tick, w = grid.w, h = grid.h;
@@ -227,7 +299,8 @@
       for (x = 0; x < w; x++) {
         i = row2 + x;
         e = el[i];
-        if (e !== SEED && e !== PLANT) continue;
+        var isLiveWood = (e === WOOD && (latent[i] === 1 || latent[i] === 2));
+        if (e !== SEED && e !== PLANT && !isLiveWood) continue;
         T = temp[i];
 
         /* ===== SEED：四条件（着地 / 湿度 / 温度 / 露头，§2.1） ===== */
@@ -241,15 +314,17 @@
           if (Balance.SEED.GROUND_REQUIRED) {
             grounded = seedGrounded(grid, x, y);
           }
-          var wet = false;
+          var wet = false, wetSrc = -1, soilSrc = -1;
           var R = Balance.SEED.MOIST_RADIUS;
-          for (var dy = -R; dy <= R && !wet; dy++) {
+          for (var dy = -R; dy <= R; dy++) {
             var yy = y + dy; if (yy < 0 || yy >= h) continue;
             for (var dx = -R; dx <= R; dx++) {
               var xx = x + dx; if (xx < 0 || xx >= w) continue;
               var v = el[yy * w + xx];
-              if (v === WATER || (v === SOIL && age[yy * w + xx] > 0)) { wet = true; break; }
+              if (v === WATER) { wet = true; wetSrc = yy * w + xx; break; }
+              if (v === SOIL && age[yy * w + xx] > 0 && soilSrc < 0) { wet = true; soilSrc = yy * w + xx; }
             }
+            if (wetSrc >= 0) break;
           }
           /* v1.4.1 露头判据放宽为"四邻域任一为 AIR/WATER"（即"未被深埋"）：
            * 旧判据只看正上方 1-2 格 → 压在同类种子上的种子（上方是种子）与
@@ -263,18 +338,61 @@
             if (nE >= 0) { var vE = el[nE]; if (vE === AIR || vE === WATER) { exposed = true; break; } }
           }
           var tempOK = (T >= Balance.SEED.TEMP_MIN && T <= Balance.SEED.TEMP_MAX);
+          /* v1.4.3：体内库存水（含水量 ≥ GERM_WATER）即视为供水 —— 旧逻辑有个自相矛盾的死结：
+           * 种子把周围的水吸干后反而被判"缺水"、萌发计时器清零，于是永远发不了芽
+           * （G2 实测 age 61→0 循环）。物理上种子吸胀后靠体内水分即可完成萌发。 */
+          if (!wet && latent[i] >= Balance.TREE.GERM_WATER) wet = true;
 
-          if (grounded && wet && tempOK && exposed) { if (age[i] < 65535) age[i]++; }
-          else { age[i] = age[i] > 2 ? age[i] - 2 : 0; }
+          if (grounded && wet && tempOK && exposed) {
+            if (age[i] < 65535) age[i]++;
+            /* v1.4.2 吸胀吸水（imbibition）：种子在萌发进程中会真的把邻近的水吸进体内 ——
+             * 物理依据就是"种子吸水膨胀"本身（配对实验对 SEED×WATER 的预期原话）。
+             * 作用：① 单格水滴不再在表面无限游走（旧实现下 SEED×WATER small 的水滴会飘走，
+             * 计时器随之清零 → 永不发芽，跨种子 flaky）；② 给玩家反馈：浇在种子上的水会消失。
+             * 概率刻意很低（≈每 250 tick 吸 1 格），保证"先攒满萌发计时、后吸干水源"的次序。 */
+            if (RNG.hash01(x, y, tick * 67 + 29) < Balance.SEED.ABSORB_P) {
+              /* v1.4.3：吸胀水源 = **湿润半径内的水或湿土**（物理：根区吸水），
+               * 不再要求四邻紧贴 —— 旧实现下"隔一堵墙的水"算湿却吸不到，种子永远发不了芽。
+               * 吸到的水记为**含水量**（latent），蓄够 GERM_WATER 才能萌发，
+               * 且含水量决定长成多大的树（原版：树的大小由种子吸收的水量决定）。 */
+              if (wetSrc >= 0 && el[wetSrc] === WATER) {
+                el[wetSrc] = AIR; temp[wetSrc] = amb; age[wetSrc] = 0; latent[wetSrc] = 0;
+                var na = latent[i] + Balance.TREE.ABSORB_GAIN;
+                latent[i] = na > 255 ? 255 : na;
+              } else if (soilSrc >= 0) {
+                var sa2 = age[soilSrc];
+                if (sa2 > 0) {
+                  age[soilSrc] = sa2 > 40 ? sa2 - 40 : 0;
+                  var na2 = latent[i] + Balance.TREE.ABSORB_GAIN;
+                  latent[i] = na2 > 255 ? 255 : na2;
+                }
+              }
+            }
+          }
+          /* v1.4.2：失水时计时器**缓降**（-1，旧值 -2）—— 生理依据：种子吸胀（imbibition）
+           * 一旦开始便不可逆，短暂失水只是让萌发进程缓慢倒退，而不是清零重来。
+           * 配合 FILM_SPREAD_F 收紧（孤立水滴被表面张力钉住、不再扩散游走）后，
+           * 配对实验 SEED×WATER small 的多颗种子均可发芽。完全无水的种子 age 仍停在 0。 */
+          else { age[i] = age[i] > 1 ? age[i] - 1 : 0; }
 
-          if (age[i] >= Balance.SEED.GERM_TIMER_REQ &&
+          if (age[i] >= Balance.SEED.GERM_TIMER_REQ && latent[i] >= Balance.TREE.GERM_WATER &&
             RNG.hash01(x, y, tick * 37 + 7) < Balance.SEED.GERM_P) {
-            el[i] = PLANT; age[i] = 0; latent[i] = 0; rootedStamp[i] = 0;
+            /* v1.4.3 ★萌发成**树**：树干 = WOOD（latent=1），生长势预算 = 含水量 × VIGOR_PER_W
+             * （存在 age —— 静态固体的 age 不参与寿命，可安全复用）。 */
+            var vg = latent[i] * Balance.TREE.VIGOR_PER_W;
+            el[i] = WOOD; age[i] = vg > 65535 ? 65535 : vg; latent[i] = 1; rootedStamp[i] = 0;
           }
           continue;
         }
 
+        /* ===== WOOD（活木：树干 latent=1 / 树枝 latent=2）===== */
+        if (isLiveWood) {
+          treeGrow(grid, i, x, y, tick, amb, latent[i] === 1);
+          continue;
+        }
+
         /* ===== PLANT：根系 / 枯萎 / 生长 ===== */
+        if (latent[i] === 2) continue;                 // 树叶（latent=2）：不生长（v1.4.3）
         var base = columnBase(grid, x, y);
         touchWater = -1;
         findWater(grid, base, Balance.PLANT.WATER_REACH);

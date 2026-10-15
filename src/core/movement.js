@@ -246,32 +246,57 @@
           }
         }
       }
-      /* 4. 水平铺展 p = mobility × 0.8 × filmF（阻尼已由上方的 mediumGate 统一施加）
+      /* 4. 水平铺展 p = mobility × 0.8 × filmF ×（阻尼已由上方的 mediumGate 统一施加）
        *
-       *    filmF —— 薄液膜阻尼（v1.3.0，docs/PHYSICS-AIR.md 附录 D）……
+       *    v1.4.3「下坡偏置」（修复"水找平太慢"，用户实测）：
+       *    旧实现左右方向由 orderh 随机 50/50 → 表面格左右抖动、净输运≈0，
+       *    找平退化成 √t 扩散：320 宽大池倒一座 20×20 水山，实测 3000 tick 后
+       *    水面仍起伏 ≥4 格（50 秒不平）。物理上水是"往低处流"，方向不该是随机的。
+       *    现在：对"上方是 AIR 的表面格"用有界下探（≤SURF_SCAN 格）测量左右邻列的
+       *    水面深度，**优先朝更深（更低）的一侧铺展**；两侧等高才随机。
+       *    成本：仅表面格 × 2 列 × ≤6 次数组读，可忽略。
+       *
+       *    filmF —— 薄液膜阻尼（v1.3.0）……
        *
        *    v1.4.1 两处修订（修复"水/油像沙子一样堆在水面上"，用户实测反馈）：
        *    ① stalled（下方同种同温）不再一票否决侧移 —— 只允许铺向 AIR。
-       *       这是"倒水入池不堆塔"的关键：旧代码让任何静置在同种液体上的格子彻底冻结，
-       *       落到水面的水无处可去（同种不互换、下方同温不能沉），于是垂直堆叠成塔。
-       *       允许向 AIR 的表面流后：持续倒水 → 每格落地即向旁边铺开，池面保持水平；
-       *       已形成的塔 → 顶层向 AIR 塌落、层层瓦解。同种格依然永不互换（enterableSide
-       *       同密度禁止 + 下沉 stalled 禁止）→ 不会 reintroduce 自我搅拌。
-       *    ② creep —— 轻液铺在重液上（油膜沿水面爬行）：目标格是**更重的液体**且
-       *       本格正下方就是它（即本格漂浮在它上面）时，允许以折扣概率挤过去。
-       *       表面张力驱动，不受沉降阻尼；重液被挤开后自身会沉回（密度判据），不失分层。 */
-      var filmF = 1;
+       *    ② creep —— 轻液铺在重液上（油膜沿水面爬行）。
+       *    不变量：同种格永不互换（enterableSide 同密度禁止 + 下沉 stalled 禁止）
+       *    → 不会 reintroduce 自我搅拌。 */
+      var filmF = 1, linked = false;
+      var lid = (x > 0) ? el[i - 1] : 1;
+      var rid = (x < w - 1) ? el[i + 1] : 1;
+      var did = (y < h - 1) ? el[i + w] : 1;
       if (LIQUID && LIQUID.FILM_SPREAD_F < 1) {
         var upId = (y > 0) ? el[i - w] : 1;
         var UE = ELS[upId];
         var pressed = !(upId === 1 || (UE.movable && UE.state === 'gas'));
-        var lid = (x > 0) ? el[i - 1] : 1;
-        var rid = (x < w - 1) ? el[i + 1] : 1;
-        var did = (y < h - 1) ? el[i + w] : 1;
-        var linked = (lid === e || rid === e || did === e);
+        linked = (lid === e || rid === e || did === e);
         if (!pressed && !linked) filmF = LIQUID.FILM_SPREAD_F;
+      } else {
+        linked = (lid === e || rid === e || did === e);
       }
-      var orderh = RNG.hash01(x, y, e * 131 + tick) < 0.5 ? -1 : 1;
+      /* 下坡偏置：测量左右邻列在本格高度之下的"空深"，深者优先（仅表面格参与） */
+      var orderh;
+      var surf = (y === 0) || (el[i - w] === 1);              // 上方为 AIR/天顶 → 表面格
+      if (stalled && surf && x > 0 && x < w - 1) {
+        var dL = 0, dR = 0, kk, yy;
+        for (kk = 1; kk <= 6; kk++) {                          // 有界下探
+          yy = y + kk; if (yy >= h) { dL = 7 - kk; break; }
+          if (el[yy * w + x - 1] !== 1) { dL = kk; break; }
+          if (kk === 6) dL = 6;
+        }
+        for (kk = 1; kk <= 6; kk++) {
+          yy = y + kk; if (yy >= h) { dR = 7 - kk; break; }
+          if (el[yy * w + x + 1] !== 1) { dR = kk; break; }
+          if (kk === 6) dR = 6;
+        }
+        if (dR > dL) orderh = 1;
+        else if (dL > dR) orderh = -1;
+        else orderh = RNG.hash01(x, y, e * 131 + tick) < 0.5 ? -1 : 1;
+      } else {
+        orderh = RNG.hash01(x, y, e * 131 + tick) < 0.5 ? -1 : 1;
+      }
       for (s = 0; s < 2; s++) {
         dx = s === 0 ? orderh : -orderh;
         nx = x + dx;
@@ -281,9 +306,29 @@
           var creep = !stalled && tj2 !== 1 && ELS[tj2].state === 'liquid' &&
             ELS[tj2].density > dens && did === tj2;          // 漂浮在更重液体上 → 允许爬行
           var sideOK = creep || (enterableSide(dens, tj2) && (!stalled || tj2 === 1));
-          if (sideOK && RNG.hash01(x, y, e * 307 + tick + s) <
-            E.mobility * 0.8 * (creep ? LIQUID.CREEP_F : 1) * filmF) {
-            swapMove(grid, i, j, tick); return;
+          /* v1.4.3 连通水体流速拉满（LIQUID.FLOW_K=1.15 → 概率封顶 1 格/tick）：
+           * 旧值一律 0.8×mobility=0.72 让大池找平的"前沿推进"慢 28%；
+           * 孤立液滴仍走 filmF（钉住），不受影响。 */
+          var spreadK = creep ? 0.8 * LIQUID.CREEP_F : (linked ? LIQUID.FLOW_K : 0.8);
+          if (sideOK && RNG.hash01(x, y, e * 307 + tick + s) < E.mobility * spreadK * filmF) {
+            swapMove(grid, i, j, tick);
+            /* v1.4.3 铺展后处理（二选一，等效 2-4 格/tick，还原"水冲下来"的手感）：
+             *   脚下是空的 → 冲流级联：连续下落直到落到液面（≤4 格）。
+             *     为什么必须"落到底"：只落一格会让铺出去的水悬在离水面 1 格处
+             *     （同温同种下方禁止下沉），形成长期漂浮的薄层 —— 实测它既拉大"起伏"指标、
+             *     又让大池找平停滞（体积法实测左右半水位差卡在 2-3 格不动）。
+             *   脚下不是空的（已在液面上）→ 水面滑移：前方仍是 AIR 则再滑一格（≤2 格/tick）。
+             *     这是"水面推进"速度的关键：旧实现只有 1 格/tick，实测窄口倒水铺满
+             *     318 宽容器要 600+ tick（10 秒），滑移后约减半。 */
+            if (LIQUID && LIQUID.CASCADE) {
+              if (el[j + w] === 1) {
+                var step = 0;
+                while (step < 4 && (j + w) < grid.n && el[j + w] === 1) { swapMove(grid, j, j + w, tick); j += w; step++; }
+              } else if (LIQUID.SLIDE2 && nx + dx >= 0 && nx + dx < w && el[j + dx] === 1) {
+                swapMove(grid, j, j + dx, tick);
+              }
+            }
+            return;
           }
         }
       }

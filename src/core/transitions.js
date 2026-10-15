@@ -120,8 +120,12 @@
               if (lat[i] < 255) lat[i]++;
               if (lat[i] >= P.LATENT_TICKS_COND) {
                 p = clamp(Balance.STEAM.COND_COEF * (100 - T), 0, Balance.STEAM.COND_P_MAX);
-                /* 无冷核（四周皆气体/真空）→ 只走极慢的均相成核；贴到冷壁面/冷液面 → 全速 */
-                if (!hasColdNucleus(grid, i)) p *= Balance.STEAM.HOMO_F;
+                /* 无冷核（四周皆气体/真空）→ 只走极慢的均相成核；贴到冷壁面/冷液面 → 全速。
+                 * v1.4.3：**深度过冷的蒸汽（T < HOMO_FULL_T）不再打折** —— 物理上过冷蒸汽
+                 * 在任何壁面/微粒上都会凝结，只有接近饱和（~100°C）时才需要凝结核慢慢来。
+                 * 旧实现让它以 0.2 折扣在 20°C 长期悬浮（用户实测："一堆只有 20 度的水蒸气"），
+                 * 既不合理也让人以为"蒸汽是固定时间变回水"。 */
+                if (!hasColdNucleus(grid, i) && T > Balance.STEAM.HOMO_FULL_T) p *= Balance.STEAM.HOMO_F;
                 if (RNG.hash01(x, y, ID.STEAM * 131 + tick) < p) { el[i] = ID.WATER; lat[i] = 0; transitions++; }
               }
             } else if (lat[i] > 0) lat[i]--;

@@ -18,11 +18,11 @@
 | 每组 tick 数 | 1200（= 20.0 游戏秒） |
 | 仿真总次数 | **5400** |
 | 仿真总 tick 数 | **6,480,000** |
-| 实际耗时 | **916.3 s**（≈ 6 次仿真/秒） |
+| 实际耗时 | **974.8 s**（≈ 6 次仿真/秒） |
 | 采样密度 | full（早期 60 tick + 每 30 tick） |
 | 随机种子 | 1337 / 2（引擎全程确定性，换种子 = 换逐格随机采样） |
 | 运行环境 | Node v22.22.2 / win32 |
-| 生成时间 | 2026-10-15T05:54:25.436Z |
+| 生成时间 | 2026-10-15T06:15:52.012Z |
 
 **网格尺寸（每档）**：
 
@@ -45,8 +45,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 
 ## 0.5 结论速览（TL;DR）
 
-- 本次共跑 **900 个有序元素对 × 3 个用量档 × 2 个种子 = 5400 次仿真**（6,480,000 tick，耗时 916 秒）。
-- 判定分布（判定组 2700 组）：**PASS 2216 / FAIL 13 / UNEXPECTED 0 / N/A 471**。
+- 本次共跑 **900 个有序元素对 × 3 个用量档 × 2 个种子 = 5400 次仿真**（6,480,000 tick，耗时 975 秒）。
+- 判定分布（判定组 2700 组）：**PASS 2220 / FAIL 9 / UNEXPECTED 0 / N/A 471**。
 - 绝大多数组合（含全部"无显著交互"的固体/流体对）**行为与现实相符**；出现偏差的集中在**燃烧（火点不着燃料）**与**溶解/腐蚀（质量不守恒）**两类。
 - **用户点名的问题**：空气不导热 ✓已修、热空气不上升 ✓已修、植物无根乱长 ✓已修、"倒液氮凭空造水" ✓已修、水源泉死元素 ✓已修。
 - **仍存在的问题**：共 **15 条**登记于 §4；其中最严重的见下（建议优先修）。
@@ -57,7 +57,7 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 4. **[Major] 液体金属不会熔化于岩浆（对铁成立、对铜/铝不成立）** —— 把所有金属当作铁，忽略低熔点金属。
 5. **[Major] 沙 → 玻璃链在标准场景不可达** —— "下调阈值"并未真正打通链路——自然玩法里做不出玻璃。
 
-> **质量门判定（建议性）**：**CONCERNS**（存在 13 个判定组未达现实预期）。最终放行由用户决定。
+> **质量门判定（建议性）**：**CONCERNS**（存在 9 个判定组未达现实预期）。最终放行由用户决定。
 
 ---
 
@@ -67,8 +67,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 
 | 判定 | 数量 | 占比 | 含义 |
 |---|---|---|---|
-| **PASS** | 4434 | 82.1% | 与现实预期一致（含"无显著交互"） |
-| **FAIL** | 24 | 0.4% | 显式预期未满足 |
+| **PASS** | 4442 | 82.3% | 与现实预期一致（含"无显著交互"） |
+| **FAIL** | 16 | 0.3% | 显式预期未满足 |
 | **N/A** | 942 | 17.4% | 同种自配 / 静态固体互配（定义上无化学交互） |
 | 合计 | 5400 | 100% | |
 
@@ -76,14 +76,14 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 
 | 判定 | 数量 | 占比 |
 |---|---|---|
-| **PASS** | 2216 | 82.1% |
-| **FAIL** | 13 | 0.5% |
+| **PASS** | 2220 | 82.2% |
+| **FAIL** | 9 | 0.3% |
 | **N/A** | 471 | 17.4% |
 | 合计 | 2700 | 100% |
 
 **不稳定（跨种子判定不一致，flaky）**：2 组（WATER×SEED/small, FIRE×DUST/small）。
 
-> 判定组中 **FAIL+13** 与 **UNEXPECTED+0** 是本报告重点；`N/A` 与 `PASS` 中的"无显著交互"属预期。**但注意：`PASS` 只代表"引擎按规格实现"，规格本身与现实不符的点单列于 §4 不合理清单。**
+> 判定组中 **FAIL+9** 与 **UNEXPECTED+0** 是本报告重点；`N/A` 与 `PASS` 中的"无显著交互"属预期。**但注意：`PASS` 只代表"引擎按规格实现"，规格本身与现实不符的点单列于 §4 不合理清单。**
 
 ### 1.3 判定组 × 类别 交叉表（2700 组）
 
@@ -93,7 +93,7 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | PHASE | 102 | 102 | 0 | 0 | 0 | 热/冷源→相变 |
 | THERMAL | 276 | 276 | 0 | 0 | 0 | 仅导热 |
 | AIR | 174 | 174 | 0 | 0 | 0 | X 在空气中 |
-| LIFE | 24 | 18 | 6 | 0 | 0 | 生命/湿度 |
+| LIFE | 24 | 22 | 2 | 0 | 0 | 生命/湿度 |
 | MIX | 312 | 312 | 0 | 0 | 0 | 流体分层 |
 | FLOW | 216 | 216 | 0 | 0 | 0 | 气体流动 |
 | STRUCT | 888 | 888 | 0 | 0 | 0 | 流体绕静态固体 |
@@ -565,8 +565,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | ICE × GUNPOWDER | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 ICE=64 GUNPOWDER=64 → 结束 AIR=1360 WALL=48 GUNPOWDER=64 WATER=64；中途曾现: ICE,GUNPOWDER,WATER；新: WATER；消失: ICE；Tmax 20.0°C | **PASS** |  |
 | ICE × GUNPOWDER | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 ICE=576 GUNPOWDER=576 → 结束 AIR=1656 WALL=72 GUNPOWDER=576 WATER=576；中途曾现: ICE,GUNPOWDER,WATER；新: WATER；消失: ICE；Tmax 20.0°C | **PASS** |  |
 | ICE × SEED | small | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1486 WALL=48 ICE=1 SEED=1 → 结束 AIR=1486 WALL=48 SEED=1 WATER=1；中途曾现: ICE,SEED,WATER；新: WATER；消失: ICE；Tmax 20.0°C | **PASS** |  |
-| ICE × SEED | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 ICE=64 SEED=64 → 结束 AIR=1353 WALL=48 PLANT=42 SEED=62 WATER=31；中途曾现: ICE,PLANT,SEED,WATER；新: PLANT,WATER；消失: ICE；Tmax 20.0°C | **PASS** |  |
-| ICE × SEED | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 ICE=576 SEED=576 → 结束 AIR=1648 WALL=72 PLANT=19 SEED=573 WATER=568；中途曾现: ICE,PLANT,SEED,WATER；新: PLANT,WATER；消失: ICE；Tmax 20.0°C | **PASS** |  |
+| ICE × SEED | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 ICE=64 SEED=64 → 结束 AIR=1363 WALL=48 PLANT=59 SEED=57 WATER=9；中途曾现: ICE,PLANT,SEED,WATER；新: PLANT,WATER；消失: ICE；Tmax 20.0°C | **PASS** |  |
+| ICE × SEED | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 ICE=576 SEED=576 → 结束 AIR=1656 WALL=72 PLANT=142 SEED=560 WATER=450；中途曾现: ICE,PLANT,SEED,WATER；新: PLANT,WATER；消失: ICE；Tmax 20.0°C | **PASS** |  |
 | ICE × WATER | small | 冰从水中吸热融化，水温下降 | 起始 AIR=1486 WALL=48 ICE=1 WATER=1 → 结束 AIR=1486 WALL=48 WATER=2；中途曾现: ICE,WATER；新: 无；消失: ICE；Tmax 20.0°C | **PASS** |  |
 | ICE × WATER | mid | 冰从水中吸热融化，水温下降 | 起始 AIR=1360 WALL=48 ICE=64 WATER=64 → 结束 AIR=1360 WALL=48 WATER=128；中途曾现: ICE,WATER；新: 无；消失: ICE；Tmax 20.0°C | **PASS** |  |
 | ICE × WATER | large | 冰从水中吸热融化，水温下降 | 起始 AIR=1656 WALL=72 ICE=576 WATER=576 → 结束 AIR=1656 WALL=72 WATER=1152；中途曾现: ICE,WATER；新: 无；消失: ICE；Tmax 20.0°C | **PASS** |  |
@@ -1006,8 +1006,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | SNOW × GUNPOWDER | mid | 两种可移动物质（粉末/液体）相邻：按密度分层/混合，无化学变化 | 起始 AIR=1360 WALL=48 SNOW=64 GUNPOWDER=64 → 结束 AIR=1360 WALL=48 GUNPOWDER=64 WATER=64；中途曾现: SNOW,GUNPOWDER,WATER；新: WATER；消失: SNOW；Tmax 20.0°C | **PASS** |  |
 | SNOW × GUNPOWDER | large | 两种可移动物质（粉末/液体）相邻：按密度分层/混合，无化学变化 | 起始 AIR=1656 WALL=72 SNOW=576 GUNPOWDER=576 → 结束 AIR=1656 WALL=72 GUNPOWDER=576 WATER=576；中途曾现: SNOW,GUNPOWDER,WATER；新: WATER；消失: SNOW；Tmax 20.0°C | **PASS** |  |
 | SNOW × SEED | small | 两种可移动物质（粉末/液体）相邻：按密度分层/混合，无化学变化 | 起始 AIR=1486 WALL=48 SNOW=1 SEED=1 → 结束 AIR=1486 WALL=48 SEED=1 WATER=1；中途曾现: SNOW,SEED,WATER；新: WATER；消失: SNOW；Tmax 20.0°C | **PASS** |  |
-| SNOW × SEED | mid | 两种可移动物质（粉末/液体）相邻：按密度分层/混合，无化学变化 | 起始 AIR=1360 WALL=48 SNOW=64 SEED=64 → 结束 AIR=1360 WALL=48 SEED=64 WATER=64；中途曾现: PLANT,SNOW,SEED,WATER；新: PLANT,WATER；消失: SNOW；Tmax 20.0°C | **PASS** |  |
-| SNOW × SEED | large | 两种可移动物质（粉末/液体）相邻：按密度分层/混合，无化学变化 | 起始 AIR=1656 WALL=72 SNOW=576 SEED=576 → 结束 AIR=1652 WALL=72 PLANT=36 SEED=572 WATER=548；中途曾现: PLANT,SNOW,SEED,WATER；新: PLANT,WATER；消失: SNOW；Tmax 20.0°C | **PASS** |  |
+| SNOW × SEED | mid | 两种可移动物质（粉末/液体）相邻：按密度分层/混合，无化学变化 | 起始 AIR=1360 WALL=48 SNOW=64 SEED=64 → 结束 AIR=1367 WALL=48 PLANT=54 SEED=62 WATER=5；中途曾现: PLANT,SNOW,SEED,WATER；新: PLANT,WATER；消失: SNOW；Tmax 20.0°C | **PASS** |  |
+| SNOW × SEED | large | 两种可移动物质（粉末/液体）相邻：按密度分层/混合，无化学变化 | 起始 AIR=1656 WALL=72 SNOW=576 SEED=576 → 结束 AIR=1666 WALL=72 PLANT=157 SEED=554 WATER=431；中途曾现: PLANT,SNOW,SEED,WATER；新: PLANT,WATER；消失: SNOW；Tmax 20.0°C | **PASS** |  |
 | SNOW × WATER | small | 两种可移动物质（粉末/液体）相邻：按密度分层/混合，无化学变化 | 起始 AIR=1486 WALL=48 SNOW=1 WATER=1 → 结束 AIR=1486 WALL=48 WATER=2；中途曾现: SNOW,WATER；新: 无；消失: SNOW；Tmax 20.0°C | **PASS** |  |
 | SNOW × WATER | mid | 两种可移动物质（粉末/液体）相邻：按密度分层/混合，无化学变化 | 起始 AIR=1360 WALL=48 SNOW=64 WATER=64 → 结束 AIR=1360 WALL=48 WATER=128；中途曾现: SNOW,WATER；新: 无；消失: SNOW；Tmax 20.0°C | **PASS** |  |
 | SNOW × WATER | large | 两种可移动物质（粉末/液体）相邻：按密度分层/混合，无化学变化 | 起始 AIR=1656 WALL=72 SNOW=576 WATER=576 → 结束 AIR=1656 WALL=72 WATER=1152；中途曾现: SNOW,WATER；新: 无；消失: SNOW；Tmax 20.0°C | **PASS** |  |
@@ -1195,8 +1195,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | SEED × SEED | mid | 同种物质相邻：自然堆叠/流动/相变，无化学变化 | 起始 AIR=1424 WALL=48 SEED=64 → 结束 AIR=1424 WALL=48 SEED=64；中途曾现: SEED；新: 无；消失: 无；Tmax 20.0°C | **N/A** |  |
 | SEED × SEED | large | 同种物质相邻：自然堆叠/流动/相变，无化学变化 | 起始 AIR=2232 WALL=72 SEED=576 → 结束 AIR=2232 WALL=72 SEED=576；中途曾现: SEED；新: 无；消失: 无；Tmax 20.0°C | **N/A** |  |
 | SEED × WATER | small | 种子吸水膨胀并发芽（需温度适宜、着地、露头） | 起始 AIR=1486 WALL=48 SEED=1 WATER=1 → 结束 AIR=1486 WALL=48 SEED=1 WATER=1；中途曾现: SEED,WATER；新: 无；消失: 无；Tmax 20.0°C | **FAIL** | 最小剂量档下单格水会流失，可能无法复现发芽（用量敏感性，见报告） |
-| SEED × WATER | mid | 种子吸水膨胀并发芽（需温度适宜、着地、露头） | 起始 AIR=1360 WALL=48 SEED=64 WATER=64 → 结束 AIR=1360 WALL=48 SEED=64 WATER=64；中途曾现: SEED,WATER；新: 无；消失: 无；Tmax 20.0°C | **FAIL** | 最小剂量档下单格水会流失，可能无法复现发芽（用量敏感性，见报告） |
-| SEED × WATER | large | 种子吸水膨胀并发芽（需温度适宜、着地、露头） | 起始 AIR=1656 WALL=72 SEED=576 WATER=576 → 结束 AIR=1656 WALL=72 SEED=576 WATER=576；中途曾现: SEED,WATER；新: 无；消失: 无；Tmax 20.0°C | **FAIL** | 最小剂量档下单格水会流失，可能无法复现发芽（用量敏感性，见报告） |
+| SEED × WATER | mid | 种子吸水膨胀并发芽（需温度适宜、着地、露头） | 起始 AIR=1360 WALL=48 SEED=64 WATER=64 → 结束 AIR=1353 WALL=48 PLANT=77 SEED=58；中途曾现: PLANT,SEED,WATER；新: PLANT；消失: WATER；Tmax 20.0°C | **PASS** | 最小剂量档下单格水会流失，可能无法复现发芽（用量敏感性，见报告） |
+| SEED × WATER | large | 种子吸水膨胀并发芽（需温度适宜、着地、露头） | 起始 AIR=1656 WALL=72 SEED=576 WATER=576 → 结束 AIR=1634 WALL=72 PLANT=253 SEED=558 WATER=363；中途曾现: PLANT,SEED,WATER；新: PLANT；消失: 无；Tmax 20.0°C | **PASS** | 最小剂量档下单格水会流失，可能无法复现发芽（用量敏感性，见报告） |
 | SEED × OIL | small | 两种可移动物质（粉末/液体）相邻：按密度分层/混合，无化学变化 | 起始 AIR=1486 WALL=48 SEED=1 OIL=1 → 结束 AIR=1486 WALL=48 SEED=1 OIL=1；中途曾现: SEED,OIL；新: 无；消失: 无；Tmax 20.0°C | **PASS** |  |
 | SEED × OIL | mid | 两种可移动物质（粉末/液体）相邻：按密度分层/混合，无化学变化 | 起始 AIR=1360 WALL=48 SEED=64 OIL=64 → 结束 AIR=1360 WALL=48 SEED=64 OIL=64；中途曾现: SEED,OIL；新: 无；消失: 无；Tmax 20.0°C | **PASS** |  |
 | SEED × OIL | large | 两种可移动物质（粉末/液体）相邻：按密度分层/混合，无化学变化 | 起始 AIR=1656 WALL=72 SEED=576 OIL=576 → 结束 AIR=1656 WALL=72 SEED=576 OIL=576；中途曾现: SEED,OIL；新: 无；消失: 无；Tmax 20.0°C | **PASS** |  |
@@ -1228,8 +1228,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | SEED × VIRUS | mid | 现实中病毒一般不侵染种子；本作设定种子可被侵染 | 起始 AIR=1360 WALL=48 SEED=64 VIRUS=64 → 结束 AIR=1360 WALL=48 VIRUS=128；中途曾现: SEED,VIRUS；新: 无；消失: SEED；Tmax 20.0°C | **PASS** |  |
 | SEED × VIRUS | large | 现实中病毒一般不侵染种子；本作设定种子可被侵染 | 起始 AIR=1656 WALL=72 SEED=576 VIRUS=576 → 结束 AIR=1656 WALL=72 VIRUS=1152；中途曾现: SEED,VIRUS；新: 无；消失: SEED；Tmax 20.0°C | **PASS** |  |
 | SEED × SPRING | small | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1486 WALL=48 SEED=1 SPRING=1 → 结束 AIR=1419 WALL=48 PLANT=36 WATER=32 SPRING=1；中途曾现: PLANT,SEED,WATER,SPRING；新: PLANT,WATER；消失: SEED；Tmax 20.0°C | **PASS** |  |
-| SEED × SPRING | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 SEED=64 SPRING=64 → 结束 AIR=1160 WALL=48 PLANT=52 SEED=58 WATER=154 SPRING=64；中途曾现: PLANT,SEED,WATER,SPRING；新: PLANT,WATER；消失: 无；Tmax 20.0°C | **PASS** |  |
-| SEED × SPRING | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 SEED=576 SPRING=576 → 结束 AIR=1302 WALL=72 PLANT=34 SEED=572 WATER=324 SPRING=576；中途曾现: PLANT,SEED,WATER,SPRING；新: PLANT,WATER；消失: 无；Tmax 20.0°C | **PASS** |  |
+| SEED × SPRING | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 SEED=64 SPRING=64 → 结束 AIR=1116 WALL=48 PLANT=96 SEED=60 WATER=152 SPRING=64；中途曾现: PLANT,SEED,WATER,SPRING；新: PLANT,WATER；消失: 无；Tmax 20.0°C | **PASS** |  |
+| SEED × SPRING | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 SEED=576 SPRING=576 → 结束 AIR=1287 WALL=72 PLANT=48 SEED=573 WATER=324 SPRING=576；中途曾现: PLANT,SEED,WATER,SPRING；新: PLANT,WATER；消失: 无；Tmax 20.0°C | **PASS** |  |
 | SEED × TNT | small | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1486 WALL=48 SEED=1 TNT=1 → 结束 AIR=1486 WALL=48 SEED=1 TNT=1；中途曾现: SEED,TNT；新: 无；消失: 无；Tmax 20.0°C | **PASS** |  |
 | SEED × TNT | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 SEED=64 TNT=64 → 结束 AIR=1360 WALL=48 SEED=64 TNT=64；中途曾现: SEED,TNT；新: 无；消失: 无；Tmax 20.0°C | **PASS** |  |
 | SEED × TNT | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 SEED=576 TNT=576 → 结束 AIR=1656 WALL=72 SEED=576 TNT=576；中途曾现: SEED,TNT；新: 无；消失: 无；Tmax 20.0°C | **PASS** |  |
@@ -1513,7 +1513,7 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 
 对每个组合，比较三个用量档的"判定 + 产物集合 + 双方是否幸存"签名。
 
-### 3.1 结果**随用量改变**的组合（89 个）——这些最符合直觉："量多少不一样"
+### 3.1 结果**随用量改变**的组合（90 个）——这些最符合直觉："量多少不一样"
 
 | 组合 | 少量 (1×1) | 中等 (8×8) | 大量 (24×24) | 类别 |
 |---|---|---|---|---|
@@ -1569,6 +1569,7 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | COAL × FIRE | PASS；活: 全灭 | PASS；活: 全灭 | PASS；活: COAL+FIRE | REACTION |
 | GUNPOWDER × LAVA | PASS；活: GUNPOWDER | PASS；活: GUNPOWDER | PASS；活: GUNPOWDER+LAVA | THERMAL |
 | GUNPOWDER × STEAM | PASS；活: GUNPOWDER | PASS；活: GUNPOWDER | PASS；活: GUNPOWDER | FLOW |
+| SEED × WATER | FAIL；活: SEED+WATER | PASS；活: SEED | PASS；活: SEED+WATER | LIFE |
 | SEED × LAVA | PASS；活: 全灭 | PASS；活: 全灭 | PASS；活: SEED+LAVA | THERMAL |
 | SEED × STEAM | PASS；活: SEED | PASS；活: SEED | PASS；活: SEED | FLOW |
 | SEED × FIRE | PASS；活: 全灭 | PASS；活: 全灭 | PASS；活: SEED | REACTION |
@@ -1576,13 +1577,12 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | WATER × LAVA | PASS；活: 全灭 | PASS；活: WATER | PASS；活: WATER+LAVA | REACTION |
 | WATER × LN2 | PASS；活: WATER | PASS；活: WATER | PASS；活: WATER | PHASE |
 | WATER × FIRE | PASS；活: WATER | PASS；活: WATER | PASS；活: WATER | REACTION |
-| OIL × LAVA | PASS；活: OIL | PASS；活: OIL | PASS；活: OIL+LAVA | THERMAL |
 
-（仅列出前 60 个，共 89 个）
+（仅列出前 60 个，共 90 个）
 
 ### 3.2 结果**不随用量改变**的组合
 
-- 全部不变量组合：**376** 个（绝大多数为"无显著交互"类别，符合预期）。
+- 全部不变量组合：**375** 个（绝大多数为"无显著交互"类别，符合预期）。
 - 其中属于 **REACTION / PHASE** 类别却"量多少都一样"的：**27** 个 —— 这类**值得重点复核**（反应类组合本应随剂量变化）：
 
 | 组合 | 类别 | 三档共同结果 |
@@ -1615,7 +1615,7 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | GAS × CLONE | REACTION | PASS；起始 AIR=1360 WALL=48 GAS=64 CLONE=64 → 结束 AIR=1424 WALL=48 CLONE=64；中途曾现: GAS,CLONE；新: 无；消失… |
 | TNT × TNT | REACTION | PASS；起始 AIR=1424 WALL=48 TNT=64 → 结束 AIR=1424 WALL=48 TNT=64；中途曾现: TNT；新: 无；消失: 无；Tmax 20.0°C… |
 
-### 3.3 方向性偏差（A×B 与 B×A 的"判定或产物集合"不同，30 组）
+### 3.3 方向性偏差（A×B 与 B×A 的"判定或产物集合"不同，29 组）
 
 > 邻接交互本应近似对称；此处仅比较**判定与产物种类**（不比较双方存活身份与计数，避免位置/随机噪声）。真正不一致者多为"上下方向偏置"（如火焰向上蔓延更强、液体沿重力方向分层）。
 
@@ -1636,7 +1636,6 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | DUST×FIRE vs FIRE×DUST | small | PASS；新 无 | FAIL；新 无 |
 | DUST×FIRE vs FIRE×DUST | large | PASS；新 ASH | PASS；新 ASH,SMOKE |
 | SNOW×SEED vs SEED×SNOW | small | PASS；新 WATER | PASS；新 PLANT,WATER |
-| SNOW×SEED vs SEED×SNOW | mid | PASS；新 PLANT,WATER | PASS；新 WATER |
 | ASH×STEAM vs STEAM×ASH | mid | PASS；新 WATER | PASS；新 无 |
 | COAL×STEAM vs STEAM×COAL | mid | PASS；新 WATER | PASS；新 无 |
 | COAL×FIRE vs FIRE×COAL | small | PASS；新 ASH | PASS；新 无 |
@@ -2173,7 +2172,7 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | GUNPOWDER×SPRING | STRUCT | PASS | PASS | PASS |
 | GUNPOWDER×TNT | STRUCT | PASS | PASS | PASS |
 | SEED×SEED | SELF | N/A | N/A | N/A |
-| SEED×WATER | LIFE | FAIL | FAIL | FAIL |
+| SEED×WATER | LIFE | FAIL | PASS | PASS |
 | SEED×OIL | MIX | PASS | PASS | PASS |
 | SEED×LAVA | THERMAL | PASS | PASS | PASS |
 | SEED×ACID | MIX | PASS | PASS | PASS |
