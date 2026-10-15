@@ -28,6 +28,9 @@
        * 差异，这样他们在流动的时候我就能一眼看出来内部是怎么在流动的"）。
        * 纯 cosmetic：不影响任何物理/测试逻辑，不序列化。 */
       tint: new Uint8Array(n),
+      /* v1.6.2：水面波高/波速场（每列一格，长度=宽；纯显示无关的物理量，不入存档） */
+      waveH: new Float32Array(w),   // 注：必须用局部 w（对象字面量里 this 尚未绑定）
+      waveV: new Float32Array(w),
 
       /* v1.6.1 气流可视化（Phase 2）：每格一个方向位标（1=E 2=W 4=N 8=S），
        * 由 air/movement/wind 的气体置换写入（i↔j 两格都写）。渲染器据此给最近发生
@@ -141,6 +144,8 @@
     this.age.fill(0);
     this.latent.fill(0);
     this.moveStamp.fill(0);
+    this.waveH.fill(0);          // v1.6.2：水面波纹场复位
+    this.waveV.fill(0);
     this.reactStamp.fill(0);
     this.flowDir.fill(0);          // v1.6.1 气流方向位标：清空
     this.press.fill(0);            // v1.6.1 压强系统：冲击压 / 表压

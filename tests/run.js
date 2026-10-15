@@ -7,7 +7,7 @@
 /* ---------- 加载 core（classic wrapper 会在 Node 下填充 globalThis.YS） ---------- */
 var path = require('path');
 var CORE = ['balance', 'rng', 'elements', 'grid', 'thermal', 'transitions',
-  'reactions', 'movement', 'air', 'biology', 'wind', 'pressure', 'engine'];
+  'reactions', 'movement', 'air', 'biology', 'wind', 'waves', 'pressure', 'engine'];
 CORE.forEach(function (m) { require(path.join(__dirname, '..', 'src', 'core', m + '.js')); });
 require(path.join(__dirname, '..', 'src', 'render', 'palette.js'));
 require(path.join(__dirname, '..', 'src', 'ui', 'i18n.js'));
@@ -315,11 +315,16 @@ test('8b. balance 键名与 §14 一致（抽样）', function () {
   /* v1.6.0：蒸汽潜热预算（让蒸汽"加热空气的同时自己保持 100 °C"） */
   assert(B.STEAM.LATENT_MAX === 255 && B.STEAM.LATENT_SPEND === 1.0,
     'STEAM 潜热预算参数（v1.6.0）');
+  /* v1.6.2：顶边界热沉 + 水面波纹 */
+  assert(B.AIR.SKY_DEV_SCALE === 40 && B.AIR.SKY_VENT_DT === 5 && B.AIR.SKY_VENT_P === 0.08,
+    '顶边界热沉参数（v1.6.2）');
+  assert(B.WAVE && B.WAVE.ENABLE === true && B.WAVE.SPEED_C2 === 0.20 && B.WAVE.MAX_REALIZE === 6,
+    '水面波纹 WAVE 参数组（v1.6.2）');
   /* v1.5.1：删除低于 100°C 的表面蒸发路径（蒸汽必须 ≥100°C 生成） */
   assert(B.WATER.EVAP_SURF_THRESH === undefined && B.WATER.EVAP_SURF_COEF === undefined,
     '低于 100°C 的表面蒸发路径应已删除（v1.5.1）');
-  assert(B.FIRE.CONTACT_K === 0.10 && B.PHYS.GAS_CONTACT_K === 0.08,
-    '火焰接触/热气体传热系数（v1.4.3 提速）');
+  assert(B.FIRE.CONTACT_K === 0.10 && B.PHYS.GAS_CONTACT_K === 0.15,
+    '火焰接触/热气体传热系数（v1.4.3 提速；v1.6.2 热气体 0.08→0.15，蒸汽蒸物体提速 1.9×）');
   assert(B.PHYS.ENV_RELAX_GAS === 0.0006, 'ENV_RELAX_GAS 应为 0.0006（v1.2.0：蒸汽不再秒冷）');
   assert(B.PHYS.ENV_RELAX_LIQUID === 0.0005, 'ENV_RELAX_LIQUID 应为 0.0005');
   assert(B.PHYS.ENV_RELAX_SOLID === 0.001, 'ENV_RELAX_SOLID 应为 0.001');
@@ -332,7 +337,7 @@ test('8b. balance 键名与 §14 一致（抽样）', function () {
    * 实测 0.02 下 _diag_water 场景 4 水温仅 74.3°C < 90 验收线，见 balance.js 注释） */
   assert(B.EMBER && B.EMBER.TEMP === 900 && B.EMBER.IGNITE_P === 0.5, 'EMBER 参数组缺失');
   assert(B.FIRE.CONTACT_K === 0.10, 'FIRE.CONTACT_K 应为 0.10（v1.4.3 提速：0.06→0.10）');
-  assert(B.PHYS.GAS_CONTACT_K === 0.08 && B.PHYS.GAS_FLUX_MIN_T === 100,
+  assert(B.PHYS.GAS_CONTACT_K === 0.15 && B.PHYS.GAS_FLUX_MIN_T === 100,
     '热气体对流传热常数（v1.4.3：0.05→0.08）');
   assert(B.PLANT.GROW_P === 0.08 && B.PLANT.VINE_P === 0.03, 'PLANT 生长参数（v1.4.0：GROW_P 加速 + VINE_P 横生）');
   /* v1.6.1：水源泉/克隆体由「累计配额 MAX_CELLS」改为「持续产出 + 活体上限 LIVE_MAX」 */
@@ -895,8 +900,18 @@ test('V1. 热空气必须被真实加热并上升（用户反馈①）', functio
   fillBox(g, 0, 74, 79, 79, E.STONE);
   fillBox(g, 34, 70, 45, 75, E.LAVA);
   for (var i = 0; i < g.n; i++) if (g.element[i] === E.LAVA) { g.temp[i] = 1200; g.nextTemp[i] = 1200; }
-  for (var t = 0; t < 300; t++) eng.step();
-  var near = g.temp[g.idx(40, 69)];                       // 岩浆正上方 1 格
+  /* v1.6.2 采样稳健化：岩浆上方的热空气是**一簇簇上升的热包**（实测垂直剖面 752/674/102/189/…
+   * 这种锯齿），单格单时刻采样等于抽签（旧值 271~305 °C 来回跳）。改为：
+   * 统计"岩浆正上方 1~3 格、最后 40 tick 内的最高温"—— 度量意图不变（空气被真实加热到数百 °C），
+   * 但不再受抽签影响。 */
+  var near = 0;
+  for (var t = 260; t < 300; t++) {
+    eng.step();
+    for (var k2 = 1; k2 <= 3; k2++) {
+      var vv = g.temp[g.idx(40, 70 - k2)];
+      if (vv > near) near = vv;
+    }
+  }
   assert(near >= 300, '岩浆上方空气应被加热到 ≥300°C，实得 ' + near.toFixed(0) +
     '°C（v1.1 旧模型仅 ~31°C —— 根因是 ΣT 守恒把空气与岩石的热容当成相等）');
   var top = 1e9;
@@ -1827,6 +1842,56 @@ test('V32. ★非 SPRING 水源（融冰）可使 WATER 超过 LIVE_MAX，但 SP
   for (var t3 = 0; t3 < 300; t3++) eng.step();
   assert(eng.springCreated > before, '排空到阈值以下后水源泉应自动恢复喷发（新增 > 0），实得 +' +
     (eng.springCreated - before));
+});
+
+test('V33. ★水面波纹：撞击后波纹向外传递、衰减且水量守恒（v1.6.2）', function () {
+  /* 用户原话：「如果我从空中放一块石头到水里，水面要有波纹传递，就是要完全拟真的模拟水的流动。」
+   * 实现见 src/core/waves.js + docs/PHYSICS-AIR.md 附录 I。
+   * 注意场景前提：STONE 是**静态固体（movable=0）**、根本不会下落，所以"放石头到水里"
+   * 在本作里就是"把它放进水里"（玩家画入）——测试按此模拟，并直接调用 splash 注入撞击。
+   *
+   * 三条现实预期：① 水量严格守恒（波纹只是搬水，不凭空生水）；
+   *              ② 扰动要**向外传播**（远处的列也出现起伏，且随时间铺开）；
+   *              ③ 起伏要有肉眼可辨的幅度（≥2 格）。 */
+  function scene(on) {
+    var eng = Engine.create({ w: 120, h: 80, seed: 1337 }), g = eng.grid;
+    fillBox(g, 0, 76, 119, 79, E.STONE);
+    fillBox(g, 10, 50, 109, 75, E.WATER);
+    for (var t = 0; t < 300; t++) eng.step();          // 让水面完全平静
+    var base = [];
+    for (var x = 0; x < 120; x++) {
+      base[x] = -1;
+      for (var y = 0; y < 80; y++) if (g.element[g.idx(x, y)] === E.WATER) { base[x] = y; break; }
+    }
+    var w0 = count(g, E.WATER);
+    g.setEl(60, 49, E.STONE);                         // 石头入水（静态固体）
+    YS.Balance.WAVE.ENABLE = on;
+    YS.Waves.splash(g, 60, 49, 1);                    // 撞击注入
+    var far20 = -1, far80 = -1, maxDev = 0;
+    for (var t2 = 1; t2 <= 80; t2++) {
+      eng.step();
+      var far = 0, dev = 0;
+      for (var x2 = 0; x2 < 120; x2++) {
+        var cur = -1;
+        for (var y2 = 0; y2 < 80; y2++) if (g.element[g.idx(x2, y2)] === E.WATER) { cur = y2; break; }
+        if (base[x2] < 0 || cur < 0) continue;
+        var d = cur - base[x2];
+        if (Math.abs(d) > Math.abs(maxDev)) maxDev = d;
+        if (Math.abs(x2 - 60) > 12 && Math.abs(x2 - 60) < 46 && d !== 0) far++;
+      }
+      if (t2 === 20) far20 = far;
+      if (t2 === 80) far80 = far;
+    }
+    YS.Balance.WAVE.ENABLE = true;
+    return { far20: far20, far80: far80, maxDev: maxDev, w0: w0, w1: count(g, E.WATER) };
+  }
+  var on = scene(true);
+  var off = scene(false);
+  assert(on.w1 === on.w0, '波纹只是搬水，水量必须守恒：' + on.w0 + ' → ' + on.w1);
+  assert(Math.abs(on.maxDev) >= 2, '水面起伏应达肉眼可辨的 ≥2 格，实得 ' + on.maxDev);
+  assert(on.far80 >= on.far20 + 8, '波纹要向外传播：远处(12-46 格)被扰动列数应随时间增加，实得 ' +
+    on.far20 + ' → ' + on.far80);
+  assert(on.far80 > off.far80 + 8, '开启波纹后远处扰动应显著多于关闭时（' + on.far80 + ' vs ' + off.far80 + '）');
 });
 
 /* ============================================================

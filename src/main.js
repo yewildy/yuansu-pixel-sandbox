@@ -16,7 +16,7 @@
 
   /* v1.4.1 游戏内版本标识（用户：「在推送游戏内标上版本以及最后修改时间，这样我才知道我玩的是哪一版」）
    * 每次发布前手动同步此处 + index.html 的 ?v= 缓存破坏参数。 */
-  var VERSION = { v: 'v1.6.1', built: '2026-10-15' };
+  var VERSION = { v: 'v1.6.2', built: '2026-10-15' };
   YS.VERSION = VERSION;
 
   function initialTemp(id) {
@@ -76,6 +76,18 @@
             /* v1.6.0：画刷画出的蒸汽也要发潜热预算（= 引擎沸腾产出的蒸汽同等对待），
              * 否则手工蒸汽没有潜热、碰到比 100 °C 冷的地方会立刻凝结成水。 */
             if (id === ID.STEAM) g.latent[y * g.w + x] = YS.Balance.STEAM.LATENT_MAX;
+            /* v1.6.2：把非水元素**画进水里**时注入水面波纹。
+             * 必须单独处理"画入"这条路径：STONE 等静态固体（movable=0）根本不会下落，
+             * 用户"从空中放一块石头到水里"实际就是把它画进水里 —— 没有这一步就不会有波纹。 */
+            if (YS.Balance.WAVE.ENABLE && YS.Waves && id !== ID.WATER && id !== ID.STEAM) {
+              var W = g.w, nIdx = y * W + x;
+              var wet = (y > 0 && g.element[nIdx - W] === ID.WATER) ||
+                (x > 0 && g.element[nIdx - 1] === ID.WATER) || (x < W - 1 && g.element[nIdx + 1] === ID.WATER);
+              if (wet) {
+                var dens = (YS.Elements.ELEMENTS[id] || {}).density || 1000;
+                YS.Waves.splash(g, x, y, dens > 1500 ? 1 : (dens > 800 ? 0.6 : 0.35));
+              }
+            }
           }
         }
       }

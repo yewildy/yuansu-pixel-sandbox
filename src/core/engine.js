@@ -30,6 +30,7 @@
   var Air = root.YS.Air;
   var Biology = root.YS.Biology;
   var Wind = root.YS.Wind;
+  var Waves = root.YS.Waves;
   var Pressure = root.YS.Pressure;   // v1.6.1 压强系统（Phase 3）
   var ID = Elements.ID;
   var P = Balance.PHYS;
@@ -63,6 +64,7 @@
       var ctx = { tick: this.tick, wind: this.wind, ambient: this.ambient, cloneCreated: this.cloneCreated, springCreated: this.springCreated };
 
       Movement.movePass(g, ctx);
+      Waves.wavePass(g, ctx);          // v1.6.2 水面波纹（依赖移动后的水面几何）
       Air.airPass(g, ctx);
       /* v1.6.1 压强系统（Phase 3）：airPass 之后、reactionPass 之前 ——
        * 压差驱动的气体流动紧接空气对流（同为"气体搬运"，且要尊重 airPass 已置的 moveStamp）；

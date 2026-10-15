@@ -43,6 +43,7 @@
 
     var windOn = !!(ctx.wind && ctx.wind.strength > 0);
     if (!pendingDrive && !windOn) { lastDriven = 0; lastMoved = 0; return; }  // 无驱动空气 → 零成本
+    /* v1.6.2 只保留顶边界热沉（thermal.js），不加梯度判据 —— 见 balance.js SKY_DEV_SCALE 注释。 */
     pendingDrive = false;
 
     var prevDriven = lastDriven;
@@ -55,6 +56,8 @@
     var amb = ctx.ambient !== undefined ? ctx.ambient : Balance.PHYS.AMBIENT_T;
 
     var buoyDt = A.BUOY_DT, negColdDt = -A.COLD_DT, scale = A.BUOY_SCALE, pmax = A.BUOY_P_MAX;
+    /* v1.6.2 试过"梯度判据"，实测**收益极小、代价极大**（见 balance.js 相关注释）： */
+
     var budget = A.MAX_MOVE_BUDGET;
     var windF = A.WIND_FACTOR, windMinDt = A.WIND_MIN_DT;
     var splitParity = tick & 1;
@@ -86,6 +89,7 @@
            * 顶部边界排掉**的角色 —— 它就是本模型的"对流散热通道"。
            * 真要修需要重做边界条件（例如顶部无条件把暖空气排出），超出本轮范围，
            * 故保留原判据并在 docs/PHYSICS-AIR.md 附录 G 如实记录该近似。 */
+
           if (el[j] === AIR && stamp[j] !== tick) {
             p = (d - buoyDt) / scale; if (p > pmax) p = pmax;
             if (RNG.hash01(x, y, tick * 211 + 1) < p) { swapStamp(grid, i, j, tick); moved++; continue; }
@@ -105,6 +109,7 @@
           driven++;
           if (y < h - 1) {                                 // 正下方下沉
             j = i + w;
+
             if (el[j] === AIR && stamp[j] !== tick) {
               p = (negColdDt - d) / scale; if (p > pmax) p = pmax;
               if (RNG.hash01(x, y, tick * 229 + 4) < p) { swapStamp(grid, i, j, tick); moved++; continue; }

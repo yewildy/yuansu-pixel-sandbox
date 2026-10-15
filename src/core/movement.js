@@ -150,6 +150,16 @@
 
   function swapMove(grid, i, j, tick) {
     var moving = grid.element[i];   // 交换前 i 格即"移动者"（调用点恒为 self 在 i）
+    /* v1.6.2 ★撞击入水 → 注入水面波纹（用户："从空中放一块石头到水里，水面要有波纹传递"）。
+     * 判据：移动者**不是水/蒸汽**，而目标格是 WATER —— 即"有东西扎进水里"。
+     * 强度按落体密度（越重溅得越狠）；传播与几何兑现在 waves.js。惰性取模块（waves.js 后加载）。 */
+    if (moving !== ID.WATER && moving !== ID.STEAM && grid.element[j] === ID.WATER) {
+      var Wv = root.YS.Waves;
+      if (Wv) {
+        var dImp = ELS[moving] ? (ELS[moving].density || 1000) : 1000;
+        Wv.splash(grid, j % grid.w, (j / grid.w) | 0, dImp > 1500 ? 1 : (dImp > 800 ? 0.6 : 0.35));
+      }
+    }
     grid.swap(i, j);
     grid.moveStamp[i] = tick;
     grid.moveStamp[j] = tick;

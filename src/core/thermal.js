@@ -20,6 +20,7 @@
 
   var Balance = root.YS.Balance;
   var Elements = root.YS.Elements;
+  var RNG = root.YS.RNG;                 // v1.6.2：顶部逸出需要确定性随机
   var ID = Elements.ID;
 
   /* Reactions 惰性获取（thermal 先于 reactions 加载，见 index.js 顺序），
@@ -153,7 +154,8 @@
     var minT = Balance.PHYS.MIN_TEMP, maxT = Balance.PHYS.MAX_TEMP;
     var mult = Balance.PHYS.EXPOSED_RELAX_MULT;
     var baseAir = Balance.AIR.RELAX;
-    var skyRows = Balance.AIR.SKY_ROWS, skyRelax = Balance.AIR.SKY_RELAX;
+    var A = Balance.AIR;
+    var skyRows = A.SKY_ROWS, skyRelax = A.SKY_RELAX, skyDevScale = A.SKY_DEV_SCALE;
     var driveDev = Balance.AIR.BUOY_DT > Balance.AIR.COLD_DT ? Balance.AIR.BUOY_DT : Balance.AIR.COLD_DT;
     var baseGas = Balance.PHYS.ENV_RELAX_GAS;
     var baseLiq = Balance.PHYS.ENV_RELAX_LIQUID;
@@ -172,9 +174,22 @@
           // 空气：恒用 AIR.RELAX（不乘暴露加成）；顶部天空层用 SKY_RELAX 散热
           v = nt[i];
           if (v !== amb) {
-            v += rAir * (amb - v);
+            /* v1.6.2：天空层散热率随温差增强（辐射近似）。
+             * 这是"严格浮力梯度判据"的必要配套 —— 见 balance.js SKY_DEV_SCALE 注释。 */
+            r = (y < skyRows) ? skyRelax * (1 + (v > amb ? v - amb : amb - v) / skyDevScale) : rAir;
+            v += r * (amb - v);
             if (v < minT) v = minT; else if (v > maxT) v = maxT;
             nt[i] = v;
+            /* v1.6.2：顶部逸出 —— y=0 行的过热空气直接排入天空（不再要求"必须向上移动"）
+             * 否则加了梯度判据后热量无处可去，画布内会持续积温（历史实测 289 °C）。 */
+            if (y === 0) {
+              var dev0 = v - amb;
+              if (dev0 > A.SKY_VENT_DT) {
+                var pv = dev0 / A.SKY_VENT_SCALE;
+                if (pv > A.SKY_VENT_P) pv = A.SKY_VENT_P;
+                if (RNG.hash01(x, 0, grid.tickId * 199 + 7) < pv) { nt[i] = amb; v = amb; }
+              }
+            }
             // 温差达到运动阈值 → 置位"有待驱动空气"标志，供 air.js 提前退出（空画布零成本）
             var dev = v - amb;
             if (Air && (dev > driveDev || dev < -driveDev)) Air.noteDeviation();
