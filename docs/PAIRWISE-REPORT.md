@@ -18,11 +18,11 @@
 | 每组 tick 数 | 1200（= 20.0 游戏秒） |
 | 仿真总次数 | **5400** |
 | 仿真总 tick 数 | **6,480,000** |
-| 实际耗时 | **994.1 s**（≈ 5 次仿真/秒） |
+| 实际耗时 | **1028.5 s**（≈ 5 次仿真/秒） |
 | 采样密度 | full（早期 60 tick + 每 30 tick） |
 | 随机种子 | 1337 / 2（引擎全程确定性，换种子 = 换逐格随机采样） |
 | 运行环境 | Node v22.22.2 / win32 |
-| 生成时间 | 2026-10-15T08:18:15.820Z |
+| 生成时间 | 2026-10-15T09:17:38.374Z |
 
 **网格尺寸（每档）**：
 
@@ -45,9 +45,9 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 
 ## 0.5 结论速览（TL;DR）
 
-- 本次共跑 **900 个有序元素对 × 3 个用量档 × 2 个种子 = 5400 次仿真**（6,480,000 tick，耗时 994 秒）。
+- 本次共跑 **900 个有序元素对 × 3 个用量档 × 2 个种子 = 5400 次仿真**（6,480,000 tick，耗时 1028 秒）。
 - 判定分布（判定组 2700 组）：**PASS 2229 / FAIL 0 / UNEXPECTED 0 / N/A 471**。
-- **本轮判定组 100% 无 FAIL / 无 UNEXPECTED**（v1.5.1 复跑）：燃烧、溶解/腐蚀、蒸汽相变三类的历史偏差均已修复或按用户决策关闭。
+- **本轮判定组 100% 无 FAIL / 无 UNEXPECTED**（v1.6.0 复跑）：燃烧、溶解/腐蚀、蒸汽相变（含潜热预算与气-气换热）均无回归。
 - **用户点名的问题**：空气不导热 ✓已修、热空气不上升 ✓已修、植物无根乱长 ✓已修、"倒液氮凭空造水" ✓已修、水源泉死元素 ✓已修。
 - **§4 不合理清单**：共 15 条 —— 其中 **4 条已修复/已按用户决策关闭**、**11 条待评估**（多为"熔融统一变 LAVA""灭火与用量无关"等建模简化项，见下）。
 
@@ -182,8 +182,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | AIR × SMOKE | mid | 烟逐渐扩散稀释、最终消散 | 起始 AIR=1424 WALL=48 SMOKE=64 → 结束 AIR=1488 WALL=48；中途曾现: SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | AIR × SMOKE | large | 烟逐渐扩散稀释、最终消散 | 起始 AIR=2232 WALL=72 SMOKE=576 → 结束 AIR=2808 WALL=72；中途曾现: SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | AIR × FIRE | small | 无燃料的火会熄灭并产生烟 | 起始 AIR=1487 WALL=48 FIRE=1 → 结束 AIR=1488 WALL=48；中途曾现: FIRE；新: 无；消失: FIRE；Tmax 22.6°C | **PASS** |  |
-| AIR × FIRE | mid | 无燃料的火会熄灭并产生烟 | 起始 AIR=1424 WALL=48 FIRE=64 → 结束 AIR=1488 WALL=48；中途曾现: SMOKE,FIRE；新: 无；消失: FIRE；Tmax 156.2°C | **PASS** |  |
-| AIR × FIRE | large | 无燃料的火会熄灭并产生烟 | 起始 AIR=2232 WALL=72 FIRE=576 → 结束 AIR=2808 WALL=72；中途曾现: SMOKE,FIRE；新: 无；消失: FIRE；Tmax 216.7°C | **PASS** |  |
+| AIR × FIRE | mid | 无燃料的火会熄灭并产生烟 | 起始 AIR=1424 WALL=48 FIRE=64 → 结束 AIR=1488 WALL=48；中途曾现: SMOKE,FIRE；新: 无；消失: FIRE；Tmax 155.6°C | **PASS** |  |
+| AIR × FIRE | large | 无燃料的火会熄灭并产生烟 | 起始 AIR=2232 WALL=72 FIRE=576 → 结束 AIR=2808 WALL=72；中途曾现: SMOKE,FIRE；新: 无；消失: FIRE；Tmax 221.5°C | **PASS** |  |
 | AIR × GAS | small | 瓦斯比空气轻，上浮并扩散 | 起始 AIR=1487 WALL=48 GAS=1 → 结束 AIR=1488 WALL=48；中途曾现: GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | AIR × GAS | mid | 瓦斯比空气轻，上浮并扩散 | 起始 AIR=1424 WALL=48 GAS=64 → 结束 AIR=1488 WALL=48；中途曾现: GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | AIR × GAS | large | 瓦斯比空气轻，上浮并扩散 | 起始 AIR=2232 WALL=72 GAS=576 → 结束 AIR=2808 WALL=72；中途曾现: GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
@@ -269,8 +269,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | WALL × SMOKE | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=112 SMOKE=64 → 结束 AIR=1424 WALL=112；中途曾现: SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | WALL × SMOKE | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=648 SMOKE=576 → 结束 AIR=2232 WALL=648；中途曾现: SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | WALL × FIRE | small | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1486 WALL=49 FIRE=1 → 结束 AIR=1487 WALL=49；中途曾现: FIRE；新: 无；消失: FIRE；Tmax 28.2°C | **PASS** |  |
-| WALL × FIRE | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=112 FIRE=64 → 结束 AIR=1424 WALL=112；中途曾现: SMOKE,FIRE；新: 无；消失: FIRE；Tmax 156.0°C | **PASS** |  |
-| WALL × FIRE | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=648 FIRE=576 → 结束 AIR=2232 WALL=648；中途曾现: SMOKE,FIRE；新: 无；消失: FIRE；Tmax 211.3°C | **PASS** |  |
+| WALL × FIRE | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=112 FIRE=64 → 结束 AIR=1424 WALL=112；中途曾现: SMOKE,FIRE；新: 无；消失: FIRE；Tmax 154.7°C | **PASS** |  |
+| WALL × FIRE | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=648 FIRE=576 → 结束 AIR=2232 WALL=648；中途曾现: SMOKE,FIRE；新: 无；消失: FIRE；Tmax 215.1°C | **PASS** |  |
 | WALL × GAS | small | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1486 WALL=49 GAS=1 → 结束 AIR=1487 WALL=49；中途曾现: GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | WALL × GAS | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=112 GAS=64 → 结束 AIR=1424 WALL=112；中途曾现: GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | WALL × GAS | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=648 GAS=576 → 结束 AIR=2232 WALL=648；中途曾现: GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
@@ -353,8 +353,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | STONE × SMOKE | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 STONE=64 SMOKE=64 → 结束 AIR=1424 WALL=48 STONE=64；中途曾现: STONE,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | STONE × SMOKE | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 STONE=576 SMOKE=576 → 结束 AIR=2232 WALL=72 STONE=576；中途曾现: STONE,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | STONE × FIRE | small | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1486 WALL=48 STONE=1 FIRE=1 → 结束 AIR=1487 WALL=48 STONE=1；中途曾现: STONE,FIRE；新: 无；消失: FIRE；Tmax 25.3°C | **PASS** |  |
-| STONE × FIRE | mid | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1360 WALL=48 STONE=64 FIRE=64 → 结束 AIR=1424 WALL=48 STONE=64；中途曾现: STONE,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 150.0°C | **PASS** |  |
-| STONE × FIRE | large | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1656 WALL=72 STONE=576 FIRE=576 → 结束 AIR=2232 WALL=72 STONE=576；中途曾现: STONE,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 209.1°C | **PASS** |  |
+| STONE × FIRE | mid | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1360 WALL=48 STONE=64 FIRE=64 → 结束 AIR=1424 WALL=48 STONE=64；中途曾现: STONE,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 144.7°C | **PASS** |  |
+| STONE × FIRE | large | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1656 WALL=72 STONE=576 FIRE=576 → 结束 AIR=2232 WALL=72 STONE=576；中途曾现: STONE,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 214.0°C | **PASS** |  |
 | STONE × GAS | small | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1486 WALL=48 STONE=1 GAS=1 → 结束 AIR=1487 WALL=48 STONE=1；中途曾现: STONE,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | STONE × GAS | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 STONE=64 GAS=64 → 结束 AIR=1424 WALL=48 STONE=64；中途曾现: STONE,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | STONE × GAS | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 STONE=576 GAS=576 → 结束 AIR=2232 WALL=72 STONE=576；中途曾现: STONE,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
@@ -434,8 +434,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | GLASS × SMOKE | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 GLASS=64 SMOKE=64 → 结束 AIR=1424 WALL=48 GLASS=64；中途曾现: GLASS,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | GLASS × SMOKE | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 GLASS=576 SMOKE=576 → 结束 AIR=2232 WALL=72 GLASS=576；中途曾现: GLASS,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | GLASS × FIRE | small | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1486 WALL=48 GLASS=1 FIRE=1 → 结束 AIR=1487 WALL=48 GLASS=1；中途曾现: GLASS,FIRE；新: 无；消失: FIRE；Tmax 25.2°C | **PASS** |  |
-| GLASS × FIRE | mid | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1360 WALL=48 GLASS=64 FIRE=64 → 结束 AIR=1424 WALL=48 GLASS=64；中途曾现: GLASS,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 146.1°C | **PASS** |  |
-| GLASS × FIRE | large | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1656 WALL=72 GLASS=576 FIRE=576 → 结束 AIR=2232 WALL=72 GLASS=576；中途曾现: GLASS,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 209.1°C | **PASS** |  |
+| GLASS × FIRE | mid | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1360 WALL=48 GLASS=64 FIRE=64 → 结束 AIR=1424 WALL=48 GLASS=64；中途曾现: GLASS,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 145.3°C | **PASS** |  |
+| GLASS × FIRE | large | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1656 WALL=72 GLASS=576 FIRE=576 → 结束 AIR=2232 WALL=72 GLASS=576；中途曾现: GLASS,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 214.0°C | **PASS** |  |
 | GLASS × GAS | small | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1486 WALL=48 GLASS=1 GAS=1 → 结束 AIR=1487 WALL=48 GLASS=1；中途曾现: GLASS,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | GLASS × GAS | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 GLASS=64 GAS=64 → 结束 AIR=1424 WALL=48 GLASS=64；中途曾现: GLASS,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | GLASS × GAS | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 GLASS=576 GAS=576 → 结束 AIR=2232 WALL=72 GLASS=576；中途曾现: GLASS,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
@@ -512,8 +512,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | METAL × SMOKE | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 METAL=64 SMOKE=64 → 结束 AIR=1424 WALL=48 METAL=64；中途曾现: METAL,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | METAL × SMOKE | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 METAL=576 SMOKE=576 → 结束 AIR=2232 WALL=72 METAL=576；中途曾现: METAL,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | METAL × FIRE | small | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1486 WALL=48 METAL=1 FIRE=1 → 结束 AIR=1487 WALL=48 METAL=1；中途曾现: METAL,FIRE；新: 无；消失: FIRE；Tmax 25.6°C | **PASS** |  |
-| METAL × FIRE | mid | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1360 WALL=48 METAL=64 FIRE=64 → 结束 AIR=1424 WALL=48 METAL=64；中途曾现: METAL,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 135.6°C | **PASS** |  |
-| METAL × FIRE | large | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1656 WALL=72 METAL=576 FIRE=576 → 结束 AIR=2232 WALL=72 METAL=576；中途曾现: METAL,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 207.9°C | **PASS** |  |
+| METAL × FIRE | mid | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1360 WALL=48 METAL=64 FIRE=64 → 结束 AIR=1424 WALL=48 METAL=64；中途曾现: METAL,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 130.8°C | **PASS** |  |
+| METAL × FIRE | large | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1656 WALL=72 METAL=576 FIRE=576 → 结束 AIR=2232 WALL=72 METAL=576；中途曾现: METAL,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 212.5°C | **PASS** |  |
 | METAL × GAS | small | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1486 WALL=48 METAL=1 GAS=1 → 结束 AIR=1487 WALL=48 METAL=1；中途曾现: METAL,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | METAL × GAS | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 METAL=64 GAS=64 → 结束 AIR=1424 WALL=48 METAL=64；中途曾现: METAL,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | METAL × GAS | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 METAL=576 GAS=576 → 结束 AIR=2232 WALL=72 METAL=576；中途曾现: METAL,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
@@ -571,9 +571,9 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | ICE × OIL | small | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1486 WALL=48 ICE=1 OIL=1 → 结束 AIR=1486 WALL=48 WATER=1 OIL=1；中途曾现: ICE,WATER,OIL；新: WATER；消失: ICE；Tmax 20.0°C | **PASS** |  |
 | ICE × OIL | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 ICE=64 OIL=64 → 结束 AIR=1360 WALL=48 WATER=64 OIL=64；中途曾现: ICE,WATER,OIL；新: WATER；消失: ICE；Tmax 20.0°C | **PASS** |  |
 | ICE × OIL | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 ICE=576 OIL=576 → 结束 AIR=1656 WALL=72 WATER=576 OIL=576；中途曾现: ICE,WATER,OIL；新: WATER；消失: ICE；Tmax 20.0°C | **PASS** |  |
-| ICE × LAVA | small | 冰被岩浆瞬间融化成水并汽化，岩浆凝固成岩 | 起始 AIR=1486 WALL=48 ICE=1 LAVA=1 → 结束 AIR=1487 WALL=48 STONE=1；中途曾现: STONE,ICE,LAVA,STEAM；新: STONE；消失: ICE,LAVA；Tmax 109.4°C | **PASS** |  |
-| ICE × LAVA | mid | 冰被岩浆瞬间融化成水并汽化，岩浆凝固成岩 | 起始 AIR=1360 WALL=48 ICE=64 LAVA=64 → 结束 AIR=1422 WALL=48 STONE=64 WATER=2；中途曾现: STONE,ICE,WATER,LAVA,STEAM；新: STONE,WATER；消失: ICE,LAVA；Tmax 332.4°C | **PASS** |  |
-| ICE × LAVA | large | 冰被岩浆瞬间融化成水并汽化，岩浆凝固成岩 | 起始 AIR=1656 WALL=72 ICE=576 LAVA=576 → 结束 AIR=2210 WALL=72 STONE=571 WATER=19 LAVA=5 STEAM=3；中途曾现: STONE,ICE,WATER,LAVA,STEAM；新: STONE,WATER,STEAM；消失: ICE；Tmax 699.7°C | **PASS** |  |
+| ICE × LAVA | small | 冰被岩浆瞬间融化成水并汽化，岩浆凝固成岩 | 起始 AIR=1486 WALL=48 ICE=1 LAVA=1 → 结束 AIR=1487 WALL=48 STONE=1；中途曾现: STONE,ICE,WATER,LAVA,STEAM；新: STONE；消失: ICE,LAVA；Tmax 109.8°C | **PASS** |  |
+| ICE × LAVA | mid | 冰被岩浆瞬间融化成水并汽化，岩浆凝固成岩 | 起始 AIR=1360 WALL=48 ICE=64 LAVA=64 → 结束 AIR=1423 WALL=48 STONE=64 WATER=1；中途曾现: STONE,ICE,WATER,LAVA,STEAM；新: STONE,WATER；消失: ICE,LAVA；Tmax 332.8°C | **PASS** |  |
+| ICE × LAVA | large | 冰被岩浆瞬间融化成水并汽化，岩浆凝固成岩 | 起始 AIR=1656 WALL=72 ICE=576 LAVA=576 → 结束 AIR=2207 WALL=72 STONE=570 WATER=23 LAVA=6 STEAM=2；中途曾现: STONE,ICE,WATER,LAVA,STEAM；新: STONE,WATER,STEAM；消失: ICE；Tmax 699.7°C | **PASS** |  |
 | ICE × ACID | small | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1486 WALL=48 ICE=1 ACID=1 → 结束 AIR=1486 WALL=48 WATER=1 ACID=1；中途曾现: ICE,WATER,ACID；新: WATER；消失: ICE；Tmax 20.0°C | **PASS** |  |
 | ICE × ACID | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 ICE=64 ACID=64 → 结束 AIR=1360 WALL=48 WATER=64 ACID=64；中途曾现: ICE,WATER,ACID；新: WATER；消失: ICE；Tmax 20.0°C | **PASS** |  |
 | ICE × ACID | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 ICE=576 ACID=576 → 结束 AIR=1656 WALL=72 WATER=576 ACID=576；中途曾现: ICE,WATER,ACID；新: WATER；消失: ICE；Tmax 20.0°C | **PASS** |  |
@@ -587,8 +587,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | ICE × SMOKE | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 ICE=64 SMOKE=64 → 结束 AIR=1424 WALL=48 WATER=64；中途曾现: ICE,WATER,SMOKE；新: WATER；消失: ICE,SMOKE；Tmax 20.0°C | **PASS** |  |
 | ICE × SMOKE | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 ICE=576 SMOKE=576 → 结束 AIR=2232 WALL=72 WATER=576；中途曾现: ICE,WATER,SMOKE；新: WATER；消失: ICE,SMOKE；Tmax 20.0°C | **PASS** |  |
 | ICE × FIRE | small | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1486 WALL=48 ICE=1 FIRE=1 → 结束 AIR=1488 WALL=48；中途曾现: ICE,WATER,STEAM,FIRE；新: WATER；消失: ICE,FIRE；Tmax 23.7°C | **PASS** |  |
-| ICE × FIRE | mid | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1360 WALL=48 ICE=64 FIRE=64 → 结束 AIR=1485 WALL=48 WATER=3；中途曾现: ICE,WATER,STEAM,SMOKE,FIRE；新: WATER；消失: ICE,FIRE；Tmax 128.4°C | **PASS** |  |
-| ICE × FIRE | large | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1656 WALL=72 ICE=576 FIRE=576 → 结束 AIR=2662 WALL=72 WATER=146；中途曾现: ICE,WATER,STEAM,SMOKE,FIRE；新: WATER；消失: ICE,FIRE；Tmax 113.9°C | **PASS** |  |
+| ICE × FIRE | mid | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1360 WALL=48 ICE=64 FIRE=64 → 结束 AIR=1485 WALL=48 WATER=3；中途曾现: ICE,WATER,STEAM,SMOKE,FIRE；新: WATER；消失: ICE,FIRE；Tmax 128.9°C | **PASS** |  |
+| ICE × FIRE | large | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1656 WALL=72 ICE=576 FIRE=576 → 结束 AIR=2684 WALL=72 WATER=124；中途曾现: ICE,WATER,STEAM,SMOKE,FIRE；新: WATER；消失: ICE,FIRE；Tmax 112.2°C | **PASS** |  |
 | ICE × GAS | small | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1486 WALL=48 ICE=1 GAS=1 → 结束 AIR=1487 WALL=48 WATER=1；中途曾现: ICE,WATER,GAS；新: WATER；消失: ICE,GAS；Tmax 20.0°C | **PASS** |  |
 | ICE × GAS | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 ICE=64 GAS=64 → 结束 AIR=1424 WALL=48 WATER=64；中途曾现: ICE,WATER,GAS；新: WATER；消失: ICE,GAS；Tmax 20.0°C | **PASS** |  |
 | ICE × GAS | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 ICE=576 GAS=576 → 结束 AIR=2232 WALL=72 WATER=576；中途曾现: ICE,WATER,GAS；新: WATER；消失: ICE,GAS；Tmax 20.0°C | **PASS** |  |
@@ -658,9 +658,9 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | WOOD × SMOKE | small | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1486 WALL=48 WOOD=1 SMOKE=1 → 结束 AIR=1487 WALL=48 WOOD=1；中途曾现: WOOD,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | WOOD × SMOKE | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 WOOD=64 SMOKE=64 → 结束 AIR=1424 WALL=48 WOOD=64；中途曾现: WOOD,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | WOOD × SMOKE | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 WOOD=576 SMOKE=576 → 结束 AIR=2232 WALL=72 WOOD=576；中途曾现: WOOD,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
-| WOOD × FIRE | small | 木材被点燃后持续燃烧、火势沿木蔓延、烧尽留下炭/灰（大部分木料应被烧掉） | 起始 AIR=1486 WALL=48 WOOD=1 FIRE=1 → 结束 AIR=1487 WALL=48 ASH=1；中途曾现: WOOD,ASH,SMOKE,FIRE；新: ASH；消失: WOOD,FIRE；Tmax 177.6°C | **PASS** | 见不合理清单·火离开燃料 |
-| WOOD × FIRE | mid | 木材被点燃后持续燃烧、火势沿木蔓延、烧尽留下炭/灰（大部分木料应被烧掉） | 起始 AIR=1360 WALL=48 WOOD=64 FIRE=64 → 结束 AIR=1484 WALL=48 ASH=4；中途曾现: WOOD,ASH,SMOKE,FIRE；新: ASH；消失: WOOD,FIRE；Tmax 252.9°C | **PASS** | 见不合理清单·火离开燃料 |
-| WOOD × FIRE | large | 木材被点燃后持续燃烧、火势沿木蔓延、烧尽留下炭/灰（大部分木料应被烧掉） | 起始 AIR=1656 WALL=72 WOOD=576 FIRE=576 → 结束 AIR=2731 WALL=72 WOOD=22 ASH=47 SMOKE=6 FIRE=2；中途曾现: WOOD,ASH,SMOKE,FIRE；新: ASH,SMOKE；消失: 无；Tmax 600.0°C | **PASS** | 见不合理清单·火离开燃料 |
+| WOOD × FIRE | small | 木材被点燃后持续燃烧、火势沿木蔓延、烧尽留下炭/灰（大部分木料应被烧掉） | 起始 AIR=1486 WALL=48 WOOD=1 FIRE=1 → 结束 AIR=1487 WALL=48 ASH=1；中途曾现: WOOD,ASH,SMOKE,FIRE；新: ASH；消失: WOOD,FIRE；Tmax 177.4°C | **PASS** | 见不合理清单·火离开燃料 |
+| WOOD × FIRE | mid | 木材被点燃后持续燃烧、火势沿木蔓延、烧尽留下炭/灰（大部分木料应被烧掉） | 起始 AIR=1360 WALL=48 WOOD=64 FIRE=64 → 结束 AIR=1485 WALL=48 ASH=3；中途曾现: WOOD,ASH,SMOKE,FIRE；新: ASH；消失: WOOD,FIRE；Tmax 245.1°C | **PASS** | 见不合理清单·火离开燃料 |
+| WOOD × FIRE | large | 木材被点燃后持续燃烧、火势沿木蔓延、烧尽留下炭/灰（大部分木料应被烧掉） | 起始 AIR=1656 WALL=72 WOOD=576 FIRE=576 → 结束 AIR=2740 WALL=72 WOOD=10 ASH=42 SMOKE=11 FIRE=5；中途曾现: WOOD,ASH,SMOKE,FIRE；新: ASH,SMOKE；消失: 无；Tmax 600.0°C | **PASS** | 见不合理清单·火离开燃料 |
 | WOOD × GAS | small | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1486 WALL=48 WOOD=1 GAS=1 → 结束 AIR=1487 WALL=48 WOOD=1；中途曾现: WOOD,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | WOOD × GAS | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 WOOD=64 GAS=64 → 结束 AIR=1424 WALL=48 WOOD=64；中途曾现: WOOD,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | WOOD × GAS | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 WOOD=576 GAS=576 → 结束 AIR=2232 WALL=72 WOOD=576；中途曾现: WOOD,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
@@ -712,9 +712,9 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | PLANT × OIL | small | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1486 WALL=48 PLANT=1 OIL=1 → 结束 AIR=1486 WALL=48 PLANT=1 OIL=1；中途曾现: PLANT,OIL；新: 无；消失: 无；Tmax 20.0°C | **PASS** |  |
 | PLANT × OIL | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 PLANT=64 OIL=64 → 结束 AIR=1360 WALL=48 PLANT=64 OIL=64；中途曾现: PLANT,OIL；新: 无；消失: 无；Tmax 20.0°C | **PASS** |  |
 | PLANT × OIL | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 PLANT=576 OIL=576 → 结束 AIR=1656 WALL=72 PLANT=576 OIL=576；中途曾现: PLANT,OIL；新: 无；消失: 无；Tmax 20.0°C | **PASS** |  |
-| PLANT × LAVA | small | 植物被岩浆点燃并烧毁，岩浆随之凝固 | 起始 AIR=1486 WALL=48 PLANT=1 LAVA=1 → 结束 AIR=1487 WALL=48 STONE=1；中途曾现: STONE,PLANT,LAVA,SMOKE,FIRE；新: STONE；消失: PLANT,LAVA；Tmax 94.3°C | **PASS** |  |
-| PLANT × LAVA | mid | 植物被岩浆点燃并烧毁，岩浆随之凝固 | 起始 AIR=1360 WALL=48 PLANT=64 LAVA=64 → 结束 AIR=1418 WALL=48 STONE=64 ASH=6；中途曾现: STONE,PLANT,ASH,LAVA,SMOKE,FIRE；新: STONE,ASH；消失: PLANT,LAVA；Tmax 330.6°C | **PASS** |  |
-| PLANT × LAVA | large | 植物被岩浆点燃并烧毁，岩浆随之凝固 | 起始 AIR=1656 WALL=72 PLANT=576 LAVA=576 → 结束 AIR=2148 WALL=72 STONE=572 PLANT=33 ASH=51 LAVA=4；中途曾现: STONE,PLANT,ASH,LAVA,SMOKE,FIRE；新: STONE,ASH；消失: 无；Tmax 699.7°C | **PASS** |  |
+| PLANT × LAVA | small | 植物被岩浆点燃并烧毁，岩浆随之凝固 | 起始 AIR=1486 WALL=48 PLANT=1 LAVA=1 → 结束 AIR=1487 WALL=48 STONE=1；中途曾现: STONE,PLANT,LAVA,SMOKE,FIRE；新: STONE；消失: PLANT,LAVA；Tmax 96.1°C | **PASS** |  |
+| PLANT × LAVA | mid | 植物被岩浆点燃并烧毁，岩浆随之凝固 | 起始 AIR=1360 WALL=48 PLANT=64 LAVA=64 → 结束 AIR=1417 WALL=48 STONE=64 ASH=7；中途曾现: STONE,PLANT,ASH,LAVA,SMOKE,FIRE；新: STONE,ASH；消失: PLANT,LAVA；Tmax 325.6°C | **PASS** |  |
+| PLANT × LAVA | large | 植物被岩浆点燃并烧毁，岩浆随之凝固 | 起始 AIR=1656 WALL=72 PLANT=576 LAVA=576 → 结束 AIR=2179 WALL=72 STONE=572 PLANT=10 ASH=43 LAVA=4；中途曾现: STONE,PLANT,ASH,LAVA,SMOKE,FIRE；新: STONE,ASH；消失: 无；Tmax 699.7°C | **PASS** |  |
 | PLANT × ACID | small | 酸腐蚀植物组织 | 起始 AIR=1486 WALL=48 PLANT=1 ACID=1 → 结束 AIR=1486 WALL=48 DUST=1 ACID=1；中途曾现: PLANT,DUST,ACID；新: DUST；消失: PLANT；Tmax 20.0°C | **PASS** |  |
 | PLANT × ACID | mid | 酸腐蚀植物组织 | 起始 AIR=1360 WALL=48 PLANT=64 ACID=64 → 结束 AIR=1360 WALL=48 PLANT=45 DUST=19 ACID=64；中途曾现: PLANT,DUST,ACID；新: DUST；消失: 无；Tmax 20.0°C | **PASS** |  |
 | PLANT × ACID | large | 酸腐蚀植物组织 | 起始 AIR=1656 WALL=72 PLANT=576 ACID=576 → 结束 AIR=1656 WALL=72 PLANT=523 DUST=53 ACID=576；中途曾现: PLANT,DUST,ACID；新: DUST；消失: 无；Tmax 20.0°C | **PASS** |  |
@@ -728,8 +728,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | PLANT × SMOKE | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 PLANT=64 SMOKE=64 → 结束 AIR=1424 WALL=48 PLANT=64；中途曾现: PLANT,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | PLANT × SMOKE | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 PLANT=576 SMOKE=576 → 结束 AIR=2232 WALL=72 PLANT=576；中途曾现: PLANT,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | PLANT × FIRE | small | 活体湿植物不易燃、通常先失水枯萎；只有干枯部分才容易被点燃 | 起始 AIR=1486 WALL=48 PLANT=1 FIRE=1 → 结束 AIR=1488 WALL=48；中途曾现: PLANT,SMOKE,FIRE；新: 无；消失: PLANT,FIRE；Tmax 44.7°C | **PASS** |  |
-| PLANT × FIRE | mid | 活体湿植物不易燃、通常先失水枯萎；只有干枯部分才容易被点燃 | 起始 AIR=1360 WALL=48 PLANT=64 FIRE=64 → 结束 AIR=1480 WALL=48 ASH=8；中途曾现: PLANT,ASH,SMOKE,FIRE；新: ASH；消失: PLANT,FIRE；Tmax 142.8°C | **PASS** |  |
-| PLANT × FIRE | large | 活体湿植物不易燃、通常先失水枯萎；只有干枯部分才容易被点燃 | 起始 AIR=1656 WALL=72 PLANT=576 FIRE=576 → 结束 AIR=2683 WALL=72 PLANT=66 ASH=59；中途曾现: PLANT,ASH,SMOKE,FIRE；新: ASH；消失: FIRE；Tmax 205.2°C | **PASS** |  |
+| PLANT × FIRE | mid | 活体湿植物不易燃、通常先失水枯萎；只有干枯部分才容易被点燃 | 起始 AIR=1360 WALL=48 PLANT=64 FIRE=64 → 结束 AIR=1483 WALL=48 ASH=5；中途曾现: PLANT,ASH,SMOKE,FIRE；新: ASH；消失: PLANT,FIRE；Tmax 142.7°C | **PASS** |  |
+| PLANT × FIRE | large | 活体湿植物不易燃、通常先失水枯萎；只有干枯部分才容易被点燃 | 起始 AIR=1656 WALL=72 PLANT=576 FIRE=576 → 结束 AIR=2708 WALL=72 PLANT=50 ASH=50；中途曾现: PLANT,ASH,SMOKE,FIRE；新: ASH；消失: FIRE；Tmax 211.1°C | **PASS** |  |
 | PLANT × GAS | small | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1486 WALL=48 PLANT=1 GAS=1 → 结束 AIR=1487 WALL=48 PLANT=1；中途曾现: PLANT,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | PLANT × GAS | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 PLANT=64 GAS=64 → 结束 AIR=1424 WALL=48 PLANT=64；中途曾现: PLANT,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | PLANT × GAS | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 PLANT=576 GAS=576 → 结束 AIR=2232 WALL=72 PLANT=576；中途曾现: PLANT,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
@@ -794,8 +794,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | SAND × SMOKE | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 SAND=64 SMOKE=64 → 结束 AIR=1424 WALL=48 SAND=64；中途曾现: SAND,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | SAND × SMOKE | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 SAND=576 SMOKE=576 → 结束 AIR=2232 WALL=72 SAND=576；中途曾现: SAND,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | SAND × FIRE | small | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1486 WALL=48 SAND=1 FIRE=1 → 结束 AIR=1487 WALL=48 SAND=1；中途曾现: SAND,FIRE；新: 无；消失: FIRE；Tmax 24.9°C | **PASS** |  |
-| SAND × FIRE | mid | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1360 WALL=48 SAND=64 FIRE=64 → 结束 AIR=1424 WALL=48 SAND=64；中途曾现: SAND,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 149.9°C | **PASS** |  |
-| SAND × FIRE | large | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1656 WALL=72 SAND=576 FIRE=576 → 结束 AIR=2232 WALL=72 SAND=576；中途曾现: SAND,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 210.8°C | **PASS** |  |
+| SAND × FIRE | mid | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1360 WALL=48 SAND=64 FIRE=64 → 结束 AIR=1424 WALL=48 SAND=64；中途曾现: SAND,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 149.7°C | **PASS** |  |
+| SAND × FIRE | large | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1656 WALL=72 SAND=576 FIRE=576 → 结束 AIR=2232 WALL=72 SAND=576；中途曾现: SAND,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 214.6°C | **PASS** |  |
 | SAND × GAS | small | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1486 WALL=48 SAND=1 GAS=1 → 结束 AIR=1487 WALL=48 SAND=1；中途曾现: SAND,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | SAND × GAS | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 SAND=64 GAS=64 → 结束 AIR=1424 WALL=48 SAND=64；中途曾现: SAND,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | SAND × GAS | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 SAND=576 GAS=576 → 结束 AIR=2232 WALL=72 SAND=576；中途曾现: SAND,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
@@ -857,8 +857,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | SOIL × SMOKE | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 SOIL=64 SMOKE=64 → 结束 AIR=1424 WALL=48 SOIL=64；中途曾现: SOIL,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | SOIL × SMOKE | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 SOIL=576 SMOKE=576 → 结束 AIR=2232 WALL=72 SOIL=576；中途曾现: SOIL,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | SOIL × FIRE | small | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1486 WALL=48 SOIL=1 FIRE=1 → 结束 AIR=1487 WALL=48 SOIL=1；中途曾现: SOIL,FIRE；新: 无；消失: FIRE；Tmax 25.1°C | **PASS** |  |
-| SOIL × FIRE | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 SOIL=64 FIRE=64 → 结束 AIR=1424 WALL=48 SOIL=64；中途曾现: SOIL,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 149.7°C | **PASS** |  |
-| SOIL × FIRE | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 SOIL=576 FIRE=576 → 结束 AIR=2232 WALL=72 SOIL=576；中途曾现: SOIL,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 211.7°C | **PASS** |  |
+| SOIL × FIRE | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 SOIL=64 FIRE=64 → 结束 AIR=1424 WALL=48 SOIL=64；中途曾现: SOIL,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 148.0°C | **PASS** |  |
+| SOIL × FIRE | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 SOIL=576 FIRE=576 → 结束 AIR=2232 WALL=72 SOIL=576；中途曾现: SOIL,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 215.1°C | **PASS** |  |
 | SOIL × GAS | small | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1486 WALL=48 SOIL=1 GAS=1 → 结束 AIR=1487 WALL=48 SOIL=1；中途曾现: SOIL,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | SOIL × GAS | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 SOIL=64 GAS=64 → 结束 AIR=1424 WALL=48 SOIL=64；中途曾现: SOIL,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | SOIL × GAS | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 SOIL=576 GAS=576 → 结束 AIR=2232 WALL=72 SOIL=576；中途曾现: SOIL,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
@@ -917,8 +917,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | SALT × SMOKE | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 SALT=64 SMOKE=64 → 结束 AIR=1424 WALL=48 SALT=64；中途曾现: SALT,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | SALT × SMOKE | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 SALT=576 SMOKE=576 → 结束 AIR=2232 WALL=72 SALT=576；中途曾现: SALT,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | SALT × FIRE | small | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1486 WALL=48 SALT=1 FIRE=1 → 结束 AIR=1487 WALL=48 SALT=1；中途曾现: SALT,FIRE；新: 无；消失: FIRE；Tmax 25.3°C | **PASS** |  |
-| SALT × FIRE | mid | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1360 WALL=48 SALT=64 FIRE=64 → 结束 AIR=1424 WALL=48 SALT=64；中途曾现: SALT,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 152.5°C | **PASS** |  |
-| SALT × FIRE | large | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1656 WALL=72 SALT=576 FIRE=576 → 结束 AIR=2232 WALL=72 SALT=576；中途曾现: SALT,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 211.3°C | **PASS** |  |
+| SALT × FIRE | mid | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1360 WALL=48 SALT=64 FIRE=64 → 结束 AIR=1424 WALL=48 SALT=64；中途曾现: SALT,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 150.8°C | **PASS** |  |
+| SALT × FIRE | large | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1656 WALL=72 SALT=576 FIRE=576 → 结束 AIR=2232 WALL=72 SALT=576；中途曾现: SALT,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 216.2°C | **PASS** |  |
 | SALT × GAS | small | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1486 WALL=48 SALT=1 GAS=1 → 结束 AIR=1487 WALL=48 SALT=1；中途曾现: SALT,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | SALT × GAS | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 SALT=64 GAS=64 → 结束 AIR=1424 WALL=48 SALT=64；中途曾现: SALT,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | SALT × GAS | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 SALT=576 GAS=576 → 结束 AIR=2232 WALL=72 SALT=576；中途曾现: SALT,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
@@ -973,9 +973,9 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | DUST × SMOKE | small | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1486 WALL=48 DUST=1 SMOKE=1 → 结束 AIR=1487 WALL=48 DUST=1；中途曾现: DUST,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | DUST × SMOKE | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 DUST=64 SMOKE=64 → 结束 AIR=1424 WALL=48 DUST=64；中途曾现: DUST,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | DUST × SMOKE | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 DUST=576 SMOKE=576 → 结束 AIR=2232 WALL=72 DUST=576；中途曾现: DUST,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
-| DUST × FIRE | small | 可燃粉尘云遇火可爆（粉尘爆炸，应迅速烧掉大部分） | 起始 AIR=1486 WALL=48 DUST=1 FIRE=1 → 结束 AIR=1488 WALL=48；中途曾现: DUST,SMOKE,FIRE；新: 无；消失: DUST,FIRE；Tmax 52.3°C | **PASS** | 见不合理清单·火离开燃料 |
-| DUST × FIRE | mid | 可燃粉尘云遇火可爆（粉尘爆炸，应迅速烧掉大部分） | 起始 AIR=1360 WALL=48 DUST=64 FIRE=64 → 结束 AIR=1487 WALL=48 ASH=1；中途曾现: DUST,ASH,SMOKE,FIRE；新: ASH；消失: DUST,FIRE；Tmax 140.8°C | **PASS** | 见不合理清单·火离开燃料 |
-| DUST × FIRE | large | 可燃粉尘云遇火可爆（粉尘爆炸，应迅速烧掉大部分） | 起始 AIR=1656 WALL=72 DUST=576 FIRE=576 → 结束 AIR=2740 WALL=72 DUST=39 ASH=22 SMOKE=6 FIRE=1；中途曾现: DUST,ASH,SMOKE,FIRE；新: ASH,SMOKE；消失: FIRE；Tmax 350.0°C | **PASS** | 见不合理清单·火离开燃料 |
+| DUST × FIRE | small | 可燃粉尘云遇火可爆（粉尘爆炸，应迅速烧掉大部分） | 起始 AIR=1486 WALL=48 DUST=1 FIRE=1 → 结束 AIR=1488 WALL=48；中途曾现: DUST,SMOKE,FIRE；新: 无；消失: DUST,FIRE；Tmax 52.2°C | **PASS** | 见不合理清单·火离开燃料 |
+| DUST × FIRE | mid | 可燃粉尘云遇火可爆（粉尘爆炸，应迅速烧掉大部分） | 起始 AIR=1360 WALL=48 DUST=64 FIRE=64 → 结束 AIR=1487 WALL=48 ASH=1；中途曾现: DUST,ASH,SMOKE,FIRE；新: ASH；消失: DUST,FIRE；Tmax 141.2°C | **PASS** | 见不合理清单·火离开燃料 |
+| DUST × FIRE | large | 可燃粉尘云遇火可爆（粉尘爆炸，应迅速烧掉大部分） | 起始 AIR=1656 WALL=72 DUST=576 FIRE=576 → 结束 AIR=2750 WALL=72 DUST=35 ASH=23；中途曾现: DUST,ASH,SMOKE,FIRE；新: ASH；消失: FIRE；Tmax 319.9°C | **PASS** | 见不合理清单·火离开燃料 |
 | DUST × GAS | small | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1486 WALL=48 DUST=1 GAS=1 → 结束 AIR=1487 WALL=48 DUST=1；中途曾现: DUST,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | DUST × GAS | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 DUST=64 GAS=64 → 结束 AIR=1424 WALL=48 DUST=64；中途曾现: DUST,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | DUST × GAS | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 DUST=576 GAS=576 → 结束 AIR=2232 WALL=72 DUST=576；中途曾现: DUST,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
@@ -1012,9 +1012,9 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | SNOW × OIL | small | 两种可移动物质（粉末/液体）相邻：按密度分层/混合，无化学变化 | 起始 AIR=1486 WALL=48 SNOW=1 OIL=1 → 结束 AIR=1486 WALL=48 WATER=1 OIL=1；中途曾现: SNOW,WATER,OIL；新: WATER；消失: SNOW；Tmax 20.0°C | **PASS** |  |
 | SNOW × OIL | mid | 两种可移动物质（粉末/液体）相邻：按密度分层/混合，无化学变化 | 起始 AIR=1360 WALL=48 SNOW=64 OIL=64 → 结束 AIR=1360 WALL=48 WATER=64 OIL=64；中途曾现: SNOW,WATER,OIL；新: WATER；消失: SNOW；Tmax 20.0°C | **PASS** |  |
 | SNOW × OIL | large | 两种可移动物质（粉末/液体）相邻：按密度分层/混合，无化学变化 | 起始 AIR=1656 WALL=72 SNOW=576 OIL=576 → 结束 AIR=1656 WALL=72 WATER=576 OIL=576；中途曾现: SNOW,WATER,OIL；新: WATER；消失: SNOW；Tmax 20.0°C | **PASS** |  |
-| SNOW × LAVA | small | 雪被岩浆极速融化成水/汽，岩浆凝固 | 起始 AIR=1486 WALL=48 SNOW=1 LAVA=1 → 结束 AIR=1487 WALL=48 STONE=1；中途曾现: STONE,SNOW,WATER,LAVA,STEAM；新: STONE；消失: SNOW,LAVA；Tmax 109.2°C | **PASS** |  |
-| SNOW × LAVA | mid | 雪被岩浆极速融化成水/汽，岩浆凝固 | 起始 AIR=1360 WALL=48 SNOW=64 LAVA=64 → 结束 AIR=1423 WALL=48 STONE=64 STEAM=1；中途曾现: STONE,SNOW,WATER,LAVA,STEAM；新: STONE,WATER,STEAM；消失: SNOW,LAVA；Tmax 332.1°C | **PASS** |  |
-| SNOW × LAVA | large | 雪被岩浆极速融化成水/汽，岩浆凝固 | 起始 AIR=1656 WALL=72 SNOW=576 LAVA=576 → 结束 AIR=2223 WALL=72 STONE=571 WATER=8 LAVA=5 STEAM=1；中途曾现: STONE,SNOW,WATER,LAVA,STEAM；新: STONE,WATER,STEAM；消失: SNOW；Tmax 699.7°C | **PASS** |  |
+| SNOW × LAVA | small | 雪被岩浆极速融化成水/汽，岩浆凝固 | 起始 AIR=1486 WALL=48 SNOW=1 LAVA=1 → 结束 AIR=1487 WALL=48 STONE=1；中途曾现: STONE,SNOW,WATER,LAVA,STEAM；新: STONE；消失: SNOW,LAVA；Tmax 109.5°C | **PASS** |  |
+| SNOW × LAVA | mid | 雪被岩浆极速融化成水/汽，岩浆凝固 | 起始 AIR=1360 WALL=48 SNOW=64 LAVA=64 → 结束 AIR=1423 WALL=48 STONE=64 STEAM=1；中途曾现: STONE,SNOW,WATER,LAVA,STEAM；新: STONE,STEAM；消失: SNOW,LAVA；Tmax 331.4°C | **PASS** |  |
+| SNOW × LAVA | large | 雪被岩浆极速融化成水/汽，岩浆凝固 | 起始 AIR=1656 WALL=72 SNOW=576 LAVA=576 → 结束 AIR=2228 WALL=72 STONE=571 WATER=4 LAVA=5；中途曾现: STONE,SNOW,WATER,LAVA,STEAM；新: STONE,WATER,STEAM；消失: SNOW；Tmax 699.7°C | **PASS** |  |
 | SNOW × ACID | small | 两种可移动物质（粉末/液体）相邻：按密度分层/混合，无化学变化 | 起始 AIR=1486 WALL=48 SNOW=1 ACID=1 → 结束 AIR=1486 WALL=48 WATER=1 ACID=1；中途曾现: SNOW,WATER,ACID；新: WATER；消失: SNOW；Tmax 20.0°C | **PASS** |  |
 | SNOW × ACID | mid | 两种可移动物质（粉末/液体）相邻：按密度分层/混合，无化学变化 | 起始 AIR=1360 WALL=48 SNOW=64 ACID=64 → 结束 AIR=1360 WALL=48 WATER=64 ACID=64；中途曾现: SNOW,WATER,ACID；新: WATER；消失: SNOW；Tmax 20.0°C | **PASS** |  |
 | SNOW × ACID | large | 两种可移动物质（粉末/液体）相邻：按密度分层/混合，无化学变化 | 起始 AIR=1656 WALL=72 SNOW=576 ACID=576 → 结束 AIR=1656 WALL=72 WATER=576 ACID=576；中途曾现: SNOW,WATER,ACID；新: WATER；消失: SNOW；Tmax 20.0°C | **PASS** |  |
@@ -1028,8 +1028,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | SNOW × SMOKE | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 SNOW=64 SMOKE=64 → 结束 AIR=1424 WALL=48 WATER=64；中途曾现: SNOW,WATER,SMOKE；新: WATER；消失: SNOW,SMOKE；Tmax 20.0°C | **PASS** |  |
 | SNOW × SMOKE | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 SNOW=576 SMOKE=576 → 结束 AIR=2232 WALL=72 WATER=576；中途曾现: SNOW,WATER,SMOKE；新: WATER；消失: SNOW,SMOKE；Tmax 20.0°C | **PASS** |  |
 | SNOW × FIRE | small | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1486 WALL=48 SNOW=1 FIRE=1 → 结束 AIR=1487 WALL=48 WATER=1；中途曾现: SNOW,WATER,FIRE；新: WATER；消失: SNOW,FIRE；Tmax 24.0°C | **PASS** |  |
-| SNOW × FIRE | mid | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1360 WALL=48 SNOW=64 FIRE=64 → 结束 AIR=1488 WALL=48；中途曾现: SNOW,WATER,STEAM,SMOKE,FIRE；新: WATER；消失: SNOW,FIRE；Tmax 130.7°C | **PASS** |  |
-| SNOW × FIRE | large | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1656 WALL=72 SNOW=576 FIRE=576 → 结束 AIR=2789 WALL=72 WATER=19；中途曾现: SNOW,WATER,STEAM,SMOKE,FIRE；新: WATER；消失: SNOW,FIRE；Tmax 102.6°C | **PASS** |  |
+| SNOW × FIRE | mid | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1360 WALL=48 SNOW=64 FIRE=64 → 结束 AIR=1485 WALL=48 WATER=3；中途曾现: SNOW,WATER,STEAM,SMOKE,FIRE；新: WATER；消失: SNOW,FIRE；Tmax 134.2°C | **PASS** |  |
+| SNOW × FIRE | large | 热/冷源相邻：对侧发生相变（熔/凝/沸/冻） | 起始 AIR=1656 WALL=72 SNOW=576 FIRE=576 → 结束 AIR=2797 WALL=72 WATER=11；中途曾现: SNOW,WATER,STEAM,SMOKE,FIRE；新: WATER；消失: SNOW,FIRE；Tmax 107.6°C | **PASS** |  |
 | SNOW × GAS | small | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1486 WALL=48 SNOW=1 GAS=1 → 结束 AIR=1487 WALL=48 WATER=1；中途曾现: SNOW,WATER,GAS；新: WATER；消失: SNOW,GAS；Tmax 20.0°C | **PASS** |  |
 | SNOW × GAS | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 SNOW=64 GAS=64 → 结束 AIR=1424 WALL=48 WATER=64；中途曾现: SNOW,WATER,GAS；新: WATER；消失: SNOW,GAS；Tmax 20.0°C | **PASS** |  |
 | SNOW × GAS | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 SNOW=576 GAS=576 → 结束 AIR=2232 WALL=72 WATER=576；中途曾现: SNOW,WATER,GAS；新: WATER；消失: SNOW,GAS；Tmax 20.0°C | **PASS** |  |
@@ -1079,8 +1079,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | ASH × SMOKE | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 ASH=64 SMOKE=64 → 结束 AIR=1424 WALL=48 ASH=64；中途曾现: ASH,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | ASH × SMOKE | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 ASH=576 SMOKE=576 → 结束 AIR=2232 WALL=72 ASH=576；中途曾现: ASH,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | ASH × FIRE | small | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1486 WALL=48 ASH=1 FIRE=1 → 结束 AIR=1487 WALL=48 ASH=1；中途曾现: ASH,FIRE；新: 无；消失: FIRE；Tmax 24.2°C | **PASS** |  |
-| ASH × FIRE | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 ASH=64 FIRE=64 → 结束 AIR=1424 WALL=48 ASH=64；中途曾现: ASH,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 145.3°C | **PASS** |  |
-| ASH × FIRE | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 ASH=576 FIRE=576 → 结束 AIR=2232 WALL=72 ASH=576；中途曾现: ASH,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 210.2°C | **PASS** |  |
+| ASH × FIRE | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 ASH=64 FIRE=64 → 结束 AIR=1424 WALL=48 ASH=64；中途曾现: ASH,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 143.3°C | **PASS** |  |
+| ASH × FIRE | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 ASH=576 FIRE=576 → 结束 AIR=2232 WALL=72 ASH=576；中途曾现: ASH,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 214.3°C | **PASS** |  |
 | ASH × GAS | small | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1486 WALL=48 ASH=1 GAS=1 → 结束 AIR=1487 WALL=48 ASH=1；中途曾现: ASH,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | ASH × GAS | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 ASH=64 GAS=64 → 结束 AIR=1424 WALL=48 ASH=64；中途曾现: ASH,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | ASH × GAS | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 ASH=576 GAS=576 → 结束 AIR=2232 WALL=72 ASH=576；中途曾现: ASH,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
@@ -1127,8 +1127,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | COAL × SMOKE | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 COAL=64 SMOKE=64 → 结束 AIR=1424 WALL=48 COAL=64；中途曾现: COAL,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | COAL × SMOKE | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 COAL=576 SMOKE=576 → 结束 AIR=2232 WALL=72 COAL=576；中途曾现: COAL,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | COAL × FIRE | small | 煤燃点较高但耐烧、放热多，烧尽成灰（大部分应被烧掉） | 起始 AIR=1486 WALL=48 COAL=1 FIRE=1 → 结束 AIR=1487 WALL=48 ASH=1；中途曾现: ASH,COAL,SMOKE,FIRE；新: ASH；消失: COAL,FIRE；Tmax 309.1°C | **PASS** | 见不合理清单·火离开燃料 |
-| COAL × FIRE | mid | 煤燃点较高但耐烧、放热多，烧尽成灰（大部分应被烧掉） | 起始 AIR=1360 WALL=48 COAL=64 FIRE=64 → 结束 AIR=1475 WALL=48 ASH=13；中途曾现: ASH,COAL,SMOKE,FIRE；新: ASH；消失: COAL,FIRE；Tmax 468.9°C | **PASS** | 见不合理清单·火离开燃料 |
-| COAL × FIRE | large | 煤燃点较高但耐烧、放热多，烧尽成灰（大部分应被烧掉） | 起始 AIR=1656 WALL=72 COAL=576 FIRE=576 → 结束 AIR=2426 WALL=72 ASH=60 COAL=188 SMOKE=51 FIRE=83；中途曾现: ASH,COAL,SMOKE,FIRE；新: ASH,SMOKE；消失: 无；Tmax 800.0°C | **PASS** | 见不合理清单·火离开燃料 |
+| COAL × FIRE | mid | 煤燃点较高但耐烧、放热多，烧尽成灰（大部分应被烧掉） | 起始 AIR=1360 WALL=48 COAL=64 FIRE=64 → 结束 AIR=1472 WALL=48 ASH=16；中途曾现: ASH,COAL,SMOKE,FIRE；新: ASH；消失: COAL,FIRE；Tmax 706.0°C | **PASS** | 见不合理清单·火离开燃料 |
+| COAL × FIRE | large | 煤燃点较高但耐烧、放热多，烧尽成灰（大部分应被烧掉） | 起始 AIR=1656 WALL=72 COAL=576 FIRE=576 → 结束 AIR=2409 WALL=72 ASH=75 COAL=256 SMOKE=19 FIRE=49；中途曾现: ASH,COAL,SMOKE,FIRE；新: ASH,SMOKE；消失: 无；Tmax 800.0°C | **PASS** | 见不合理清单·火离开燃料 |
 | COAL × GAS | small | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1486 WALL=48 COAL=1 GAS=1 → 结束 AIR=1487 WALL=48 COAL=1；中途曾现: COAL,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | COAL × GAS | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 COAL=64 GAS=64 → 结束 AIR=1424 WALL=48 COAL=64；中途曾现: COAL,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | COAL × GAS | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 COAL=576 GAS=576 → 结束 AIR=2232 WALL=72 COAL=576；中途曾现: COAL,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
@@ -1171,8 +1171,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | GUNPOWDER × SMOKE | small | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1486 WALL=48 GUNPOWDER=1 SMOKE=1 → 结束 AIR=1487 WALL=48 GUNPOWDER=1；中途曾现: GUNPOWDER,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | GUNPOWDER × SMOKE | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 GUNPOWDER=64 SMOKE=64 → 结束 AIR=1424 WALL=48 GUNPOWDER=64；中途曾现: GUNPOWDER,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | GUNPOWDER × SMOKE | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 GUNPOWDER=576 SMOKE=576 → 结束 AIR=2232 WALL=72 GUNPOWDER=576；中途曾现: GUNPOWDER,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
-| GUNPOWDER × FIRE | small | 火药爆燃、极快蔓延清空 | 起始 AIR=1486 WALL=48 GUNPOWDER=1 FIRE=1 → 结束 AIR=1487 WALL=48 ASH=1；中途曾现: ASH,GUNPOWDER,SMOKE,FIRE；新: ASH；消失: GUNPOWDER,FIRE；Tmax 187.1°C | **PASS** |  |
-| GUNPOWDER × FIRE | mid | 火药爆燃、极快蔓延清空 | 起始 AIR=1360 WALL=48 GUNPOWDER=64 FIRE=64 → 结束 AIR=1424 WALL=48 ASH=64；中途曾现: ASH,GUNPOWDER,SMOKE,FIRE；新: ASH；消失: GUNPOWDER,FIRE；Tmax 235.4°C | **PASS** |  |
+| GUNPOWDER × FIRE | small | 火药爆燃、极快蔓延清空 | 起始 AIR=1486 WALL=48 GUNPOWDER=1 FIRE=1 → 结束 AIR=1487 WALL=48 ASH=1；中途曾现: ASH,GUNPOWDER,SMOKE,FIRE；新: ASH；消失: GUNPOWDER,FIRE；Tmax 186.9°C | **PASS** |  |
+| GUNPOWDER × FIRE | mid | 火药爆燃、极快蔓延清空 | 起始 AIR=1360 WALL=48 GUNPOWDER=64 FIRE=64 → 结束 AIR=1424 WALL=48 ASH=64；中途曾现: ASH,GUNPOWDER,SMOKE,FIRE；新: ASH；消失: GUNPOWDER,FIRE；Tmax 235.3°C | **PASS** |  |
 | GUNPOWDER × FIRE | large | 火药爆燃、极快蔓延清空 | 起始 AIR=1656 WALL=72 GUNPOWDER=576 FIRE=576 → 结束 AIR=2232 WALL=72 ASH=576；中途曾现: ASH,GUNPOWDER,SMOKE,FIRE；新: ASH；消失: GUNPOWDER,FIRE；Tmax 285.3°C | **PASS** |  |
 | GUNPOWDER × GAS | small | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1486 WALL=48 GUNPOWDER=1 GAS=1 → 结束 AIR=1487 WALL=48 GUNPOWDER=1；中途曾现: GUNPOWDER,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | GUNPOWDER × GAS | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 GUNPOWDER=64 GAS=64 → 结束 AIR=1424 WALL=48 GUNPOWDER=64；中途曾现: GUNPOWDER,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
@@ -1214,8 +1214,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | SEED × SMOKE | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 SEED=64 SMOKE=64 → 结束 AIR=1424 WALL=48 SEED=64；中途曾现: SEED,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | SEED × SMOKE | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 SEED=576 SMOKE=576 → 结束 AIR=2232 WALL=72 SEED=576；中途曾现: SEED,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | SEED × FIRE | small | 种子受热会失去活性并被部分烧毁；但种子群一旦吸胀成活会长成树，木质树干燃烧极慢，故不要求烧掉一半以上（v1.5.0 树模型） | 起始 AIR=1486 WALL=48 SEED=1 FIRE=1 → 结束 AIR=1488 WALL=48；中途曾现: SEED,FIRE；新: 无；消失: SEED,FIRE；Tmax 26.4°C | **PASS** | v1.5.0：木柴烧得慢（对齐原版）→ 短寿命火焰烧不透 |
-| SEED × FIRE | mid | 种子受热会失去活性并被部分烧毁；但种子群一旦吸胀成活会长成树，木质树干燃烧极慢，故不要求烧掉一半以上（v1.5.0 树模型） | 起始 AIR=1360 WALL=48 SEED=64 FIRE=64 → 结束 AIR=1439 WALL=48 ASH=14 SEED=35；中途曾现: ASH,SEED,SMOKE,FIRE；新: ASH；消失: FIRE；Tmax 144.9°C | **PASS** | v1.5.0：木柴烧得慢（对齐原版）→ 短寿命火焰烧不透 |
-| SEED × FIRE | large | 种子受热会失去活性并被部分烧毁；但种子群一旦吸胀成活会长成树，木质树干燃烧极慢，故不要求烧掉一半以上（v1.5.0 树模型） | 起始 AIR=1656 WALL=72 SEED=576 FIRE=576 → 结束 AIR=2288 WALL=72 ASH=46 SEED=474；中途曾现: ASH,SEED,SMOKE,FIRE；新: ASH；消失: FIRE；Tmax 211.0°C | **PASS** | v1.5.0：木柴烧得慢（对齐原版）→ 短寿命火焰烧不透 |
+| SEED × FIRE | mid | 种子受热会失去活性并被部分烧毁；但种子群一旦吸胀成活会长成树，木质树干燃烧极慢，故不要求烧掉一半以上（v1.5.0 树模型） | 起始 AIR=1360 WALL=48 SEED=64 FIRE=64 → 结束 AIR=1437 WALL=48 ASH=17 SEED=34；中途曾现: ASH,SEED,SMOKE,FIRE；新: ASH；消失: FIRE；Tmax 144.5°C | **PASS** | v1.5.0：木柴烧得慢（对齐原版）→ 短寿命火焰烧不透 |
+| SEED × FIRE | large | 种子受热会失去活性并被部分烧毁；但种子群一旦吸胀成活会长成树，木质树干燃烧极慢，故不要求烧掉一半以上（v1.5.0 树模型） | 起始 AIR=1656 WALL=72 SEED=576 FIRE=576 → 结束 AIR=2286 WALL=72 ASH=48 SEED=474；中途曾现: ASH,SEED,SMOKE,FIRE；新: ASH；消失: FIRE；Tmax 214.7°C | **PASS** | v1.5.0：木柴烧得慢（对齐原版）→ 短寿命火焰烧不透 |
 | SEED × GAS | small | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1486 WALL=48 SEED=1 GAS=1 → 结束 AIR=1487 WALL=48 SEED=1；中途曾现: SEED,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | SEED × GAS | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 SEED=64 GAS=64 → 结束 AIR=1424 WALL=48 SEED=64；中途曾现: SEED,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | SEED × GAS | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 SEED=576 GAS=576 → 结束 AIR=2232 WALL=72 SEED=576；中途曾现: SEED,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
@@ -1237,9 +1237,9 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | WATER × OIL | small | 油不溶于水、密度较小，浮在水面上形成分层 | 起始 AIR=1486 WALL=48 WATER=1 OIL=1 → 结束 AIR=1486 WALL=48 WATER=1 OIL=1；中途曾现: WATER,OIL；新: 无；消失: 无；Tmax 20.0°C | **PASS** |  |
 | WATER × OIL | mid | 油不溶于水、密度较小，浮在水面上形成分层 | 起始 AIR=1360 WALL=48 WATER=64 OIL=64 → 结束 AIR=1360 WALL=48 WATER=64 OIL=64；中途曾现: WATER,OIL；新: 无；消失: 无；Tmax 20.0°C | **PASS** |  |
 | WATER × OIL | large | 油不溶于水、密度较小，浮在水面上形成分层 | 起始 AIR=1656 WALL=72 WATER=576 OIL=576 → 结束 AIR=1656 WALL=72 WATER=576 OIL=576；中途曾现: WATER,OIL；新: 无；消失: 无；Tmax 20.0°C | **PASS** |  |
-| WATER × LAVA | small | 岩浆遇水骤冷凝固成岩石，水剧烈汽化（沸腾飞溅） | 起始 AIR=1486 WALL=48 WATER=1 LAVA=1 → 结束 AIR=1487 WALL=48 STONE=1；中途曾现: STONE,WATER,LAVA,STEAM；新: STONE；消失: WATER,LAVA；Tmax 106.8°C | **PASS** |  |
-| WATER × LAVA | mid | 岩浆遇水骤冷凝固成岩石，水剧烈汽化（沸腾飞溅） | 起始 AIR=1360 WALL=48 WATER=64 LAVA=64 → 结束 AIR=1423 WALL=48 STONE=64 STEAM=1；中途曾现: STONE,WATER,LAVA,STEAM；新: STONE,STEAM；消失: WATER,LAVA；Tmax 334.8°C | **PASS** |  |
-| WATER × LAVA | large | 岩浆遇水骤冷凝固成岩石，水剧烈汽化（沸腾飞溅） | 起始 AIR=1656 WALL=72 WATER=576 LAVA=576 → 结束 AIR=2211 WALL=72 STONE=572 WATER=19 LAVA=4 STEAM=2；中途曾现: STONE,WATER,LAVA,STEAM；新: STONE,STEAM；消失: 无；Tmax 699.7°C | **PASS** |  |
+| WATER × LAVA | small | 岩浆遇水骤冷凝固成岩石，水剧烈汽化（沸腾飞溅） | 起始 AIR=1486 WALL=48 WATER=1 LAVA=1 → 结束 AIR=1487 WALL=48 STONE=1；中途曾现: STONE,WATER,LAVA,STEAM；新: STONE；消失: WATER,LAVA；Tmax 106.0°C | **PASS** |  |
+| WATER × LAVA | mid | 岩浆遇水骤冷凝固成岩石，水剧烈汽化（沸腾飞溅） | 起始 AIR=1360 WALL=48 WATER=64 LAVA=64 → 结束 AIR=1423 WALL=48 STONE=64 WATER=1；中途曾现: STONE,WATER,LAVA,STEAM；新: STONE；消失: LAVA；Tmax 326.5°C | **PASS** |  |
+| WATER × LAVA | large | 岩浆遇水骤冷凝固成岩石，水剧烈汽化（沸腾飞溅） | 起始 AIR=1656 WALL=72 WATER=576 LAVA=576 → 结束 AIR=2209 WALL=72 STONE=572 WATER=22 LAVA=4 STEAM=1；中途曾现: STONE,WATER,LAVA,STEAM；新: STONE,STEAM；消失: 无；Tmax 699.7°C | **PASS** |  |
 | WATER × ACID | small | 水与酸互溶稀释（放热）；本作按密度分层、无新物质 | 起始 AIR=1486 WALL=48 WATER=1 ACID=1 → 结束 AIR=1486 WALL=48 WATER=1 ACID=1；中途曾现: WATER,ACID；新: 无；消失: 无；Tmax 20.0°C | **PASS** |  |
 | WATER × ACID | mid | 水与酸互溶稀释（放热）；本作按密度分层、无新物质 | 起始 AIR=1360 WALL=48 WATER=64 ACID=64 → 结束 AIR=1360 WALL=48 WATER=64 ACID=64；中途曾现: WATER,ACID；新: 无；消失: 无；Tmax 20.0°C | **PASS** |  |
 | WATER × ACID | large | 水与酸互溶稀释（放热）；本作按密度分层、无新物质 | 起始 AIR=1656 WALL=72 WATER=576 ACID=576 → 结束 AIR=1656 WALL=72 WATER=576 ACID=576；中途曾现: WATER,ACID；新: 无；消失: 无；Tmax 20.0°C | **PASS** |  |
@@ -1253,8 +1253,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | WATER × SMOKE | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 WATER=64 SMOKE=64 → 结束 AIR=1424 WALL=48 WATER=64；中途曾现: WATER,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | WATER × SMOKE | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 WATER=576 SMOKE=576 → 结束 AIR=2232 WALL=72 WATER=576；中途曾现: WATER,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | WATER × FIRE | small | 水吸热汽化并把火浇灭，水面冒蒸汽（现实中水灭火以水蒸气为主、基本不产生烟） | 起始 AIR=1486 WALL=48 WATER=1 FIRE=1 → 结束 AIR=1487 WALL=48 WATER=1；中途曾现: WATER,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 22.1°C | **PASS** | 判据局限：火有固有寿命，FIRE==0 不足以单独证明"被浇灭" |
-| WATER × FIRE | mid | 水吸热汽化并把火浇灭，水面冒蒸汽（现实中水灭火以水蒸气为主、基本不产生烟） | 起始 AIR=1360 WALL=48 WATER=64 FIRE=64 → 结束 AIR=1485 WALL=48 WATER=3；中途曾现: WATER,STEAM,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 118.4°C | **PASS** | 判据局限：火有固有寿命，FIRE==0 不足以单独证明"被浇灭" |
-| WATER × FIRE | large | 水吸热汽化并把火浇灭，水面冒蒸汽（现实中水灭火以水蒸气为主、基本不产生烟） | 起始 AIR=1656 WALL=72 WATER=576 FIRE=576 → 结束 AIR=2787 WALL=72 WATER=21；中途曾现: WATER,STEAM,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 114.3°C | **PASS** | 判据局限：火有固有寿命，FIRE==0 不足以单独证明"被浇灭" |
+| WATER × FIRE | mid | 水吸热汽化并把火浇灭，水面冒蒸汽（现实中水灭火以水蒸气为主、基本不产生烟） | 起始 AIR=1360 WALL=48 WATER=64 FIRE=64 → 结束 AIR=1484 WALL=48 WATER=4；中途曾现: WATER,STEAM,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 120.8°C | **PASS** | 判据局限：火有固有寿命，FIRE==0 不足以单独证明"被浇灭" |
+| WATER × FIRE | large | 水吸热汽化并把火浇灭，水面冒蒸汽（现实中水灭火以水蒸气为主、基本不产生烟） | 起始 AIR=1656 WALL=72 WATER=576 FIRE=576 → 结束 AIR=2795 WALL=72 WATER=13；中途曾现: WATER,STEAM,SMOKE,FIRE；新: STEAM；消失: FIRE；Tmax 110.7°C | **PASS** | 判据局限：火有固有寿命，FIRE==0 不足以单独证明"被浇灭" |
 | WATER × GAS | small | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1486 WALL=48 WATER=1 GAS=1 → 结束 AIR=1487 WALL=48 WATER=1；中途曾现: WATER,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | WATER × GAS | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 WATER=64 GAS=64 → 结束 AIR=1424 WALL=48 WATER=64；中途曾现: WATER,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | WATER × GAS | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 WATER=576 GAS=576 → 结束 AIR=2232 WALL=72 WATER=576；中途曾现: WATER,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
@@ -1288,9 +1288,9 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | OIL × SMOKE | small | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1486 WALL=48 OIL=1 SMOKE=1 → 结束 AIR=1487 WALL=48 OIL=1；中途曾现: OIL,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | OIL × SMOKE | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 OIL=64 SMOKE=64 → 结束 AIR=1424 WALL=48 OIL=64；中途曾现: OIL,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | OIL × SMOKE | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 OIL=576 SMOKE=576 → 结束 AIR=2232 WALL=72 OIL=576；中途曾现: OIL,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
-| OIL × FIRE | small | 油燃点低、易燃，火势猛烈，燃尽基本无残渣（大部分应被烧掉） | 起始 AIR=1486 WALL=48 OIL=1 FIRE=1 → 结束 AIR=1488 WALL=48；中途曾现: OIL,SMOKE,FIRE；新: 无；消失: OIL,FIRE；Tmax 113.4°C | **PASS** | 见不合理清单·火离开燃料 |
-| OIL × FIRE | mid | 油燃点低、易燃，火势猛烈，燃尽基本无残渣（大部分应被烧掉） | 起始 AIR=1360 WALL=48 OIL=64 FIRE=64 → 结束 AIR=1487 WALL=48 ASH=1；中途曾现: ASH,OIL,SMOKE,FIRE；新: ASH；消失: OIL,FIRE；Tmax 201.9°C | **PASS** | 见不合理清单·火离开燃料 |
-| OIL × FIRE | large | 油燃点低、易燃，火势猛烈，燃尽基本无残渣（大部分应被烧掉） | 起始 AIR=1656 WALL=72 OIL=576 FIRE=576 → 结束 AIR=2782 WALL=72 ASH=26；中途曾现: ASH,OIL,SMOKE,FIRE；新: ASH；消失: OIL,FIRE；Tmax 350.2°C | **PASS** | 见不合理清单·火离开燃料 |
+| OIL × FIRE | small | 油燃点低、易燃，火势猛烈，燃尽基本无残渣（大部分应被烧掉） | 起始 AIR=1486 WALL=48 OIL=1 FIRE=1 → 结束 AIR=1488 WALL=48；中途曾现: OIL,SMOKE,FIRE；新: 无；消失: OIL,FIRE；Tmax 112.6°C | **PASS** | 见不合理清单·火离开燃料 |
+| OIL × FIRE | mid | 油燃点低、易燃，火势猛烈，燃尽基本无残渣（大部分应被烧掉） | 起始 AIR=1360 WALL=48 OIL=64 FIRE=64 → 结束 AIR=1487 WALL=48 ASH=1；中途曾现: ASH,OIL,SMOKE,FIRE；新: ASH；消失: OIL,FIRE；Tmax 201.4°C | **PASS** | 见不合理清单·火离开燃料 |
+| OIL × FIRE | large | 油燃点低、易燃，火势猛烈，燃尽基本无残渣（大部分应被烧掉） | 起始 AIR=1656 WALL=72 OIL=576 FIRE=576 → 结束 AIR=2769 WALL=72 ASH=38 OIL=1；中途曾现: ASH,OIL,SMOKE,FIRE；新: ASH；消失: OIL,FIRE；Tmax 371.7°C | **PASS** | 见不合理清单·火离开燃料 |
 | OIL × GAS | small | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1486 WALL=48 OIL=1 GAS=1 → 结束 AIR=1487 WALL=48 OIL=1；中途曾现: OIL,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | OIL × GAS | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 OIL=64 GAS=64 → 结束 AIR=1424 WALL=48 OIL=64；中途曾现: OIL,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | OIL × GAS | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 OIL=576 GAS=576 → 结束 AIR=2232 WALL=72 OIL=576；中途曾现: OIL,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
@@ -1315,17 +1315,17 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | LAVA × LN2 | small | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1486 WALL=48 LAVA=1 LN2=1 → 结束 AIR=1487 WALL=48 STONE=1；中途曾现: STONE,LAVA,LN2；新: STONE；消失: LAVA,LN2；Tmax 139.6°C | **PASS** |  |
 | LAVA × LN2 | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 LAVA=64 LN2=64 → 结束 AIR=1424 WALL=48 STONE=64；中途曾现: STONE,LAVA,LN2；新: STONE；消失: LAVA,LN2；Tmax 301.3°C | **PASS** |  |
 | LAVA × LN2 | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 LAVA=576 LN2=576 → 结束 AIR=2232 WALL=72 STONE=576；中途曾现: STONE,LAVA,LN2；新: STONE；消失: LAVA,LN2；Tmax 678.8°C | **PASS** |  |
-| LAVA × STEAM | small | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1486 WALL=48 LAVA=1 STEAM=1 → 结束 AIR=1487 WALL=48 STONE=1；中途曾现: STONE,WATER,LAVA,STEAM；新: STONE；消失: LAVA,STEAM；Tmax 112.9°C | **PASS** |  |
-| LAVA × STEAM | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 LAVA=64 STEAM=64 → 结束 AIR=1424 WALL=48 STONE=64；中途曾现: STONE,WATER,LAVA,STEAM；新: STONE；消失: LAVA,STEAM；Tmax 317.4°C | **PASS** |  |
-| LAVA × STEAM | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 LAVA=576 STEAM=576 → 结束 AIR=2210 WALL=72 STONE=569 WATER=21 LAVA=7 STEAM=1；中途曾现: STONE,WATER,LAVA,STEAM；新: STONE,WATER；消失: LAVA；Tmax 699.7°C | **PASS** |  |
+| LAVA × STEAM | small | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1486 WALL=48 LAVA=1 STEAM=1 → 结束 AIR=1487 WALL=48 STONE=1；中途曾现: STONE,WATER,LAVA,STEAM；新: STONE；消失: LAVA,STEAM；Tmax 113.5°C | **PASS** |  |
+| LAVA × STEAM | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 LAVA=64 STEAM=64 → 结束 AIR=1424 WALL=48 STONE=64；中途曾现: STONE,WATER,LAVA,STEAM；新: STONE；消失: LAVA,STEAM；Tmax 323.3°C | **PASS** |  |
+| LAVA × STEAM | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 LAVA=576 STEAM=576 → 结束 AIR=2220 WALL=72 STONE=569 WATER=10 LAVA=7 STEAM=2；中途曾现: STONE,WATER,LAVA,STEAM；新: STONE,WATER；消失: 无；Tmax 699.7°C | **PASS** |  |
 | LAVA × SMOKE | small | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1486 WALL=48 LAVA=1 SMOKE=1 → 结束 AIR=1487 WALL=48 STONE=1；中途曾现: STONE,LAVA,SMOKE；新: STONE；消失: LAVA,SMOKE；Tmax 140.8°C | **PASS** |  |
-| LAVA × SMOKE | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 LAVA=64 SMOKE=64 → 结束 AIR=1424 WALL=48 STONE=64；中途曾现: STONE,LAVA,SMOKE；新: STONE；消失: LAVA,SMOKE；Tmax 323.8°C | **PASS** |  |
+| LAVA × SMOKE | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 LAVA=64 SMOKE=64 → 结束 AIR=1424 WALL=48 STONE=64；中途曾现: STONE,LAVA,SMOKE；新: STONE；消失: LAVA,SMOKE；Tmax 316.8°C | **PASS** |  |
 | LAVA × SMOKE | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 LAVA=576 SMOKE=576 → 结束 AIR=2232 WALL=72 STONE=575 LAVA=1；中途曾现: STONE,LAVA,SMOKE；新: STONE；消失: LAVA,SMOKE；Tmax 699.7°C | **PASS** |  |
 | LAVA × FIRE | small | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1486 WALL=48 LAVA=1 FIRE=1 → 结束 AIR=1487 WALL=48 STONE=1；中途曾现: STONE,LAVA,FIRE；新: STONE；消失: LAVA,FIRE；Tmax 143.3°C | **PASS** |  |
-| LAVA × FIRE | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 LAVA=64 FIRE=64 → 结束 AIR=1424 WALL=48 STONE=64；中途曾现: STONE,LAVA,SMOKE,FIRE；新: STONE；消失: LAVA,FIRE；Tmax 326.9°C | **PASS** |  |
-| LAVA × FIRE | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 LAVA=576 FIRE=576 → 结束 AIR=2232 WALL=72 STONE=576；中途曾现: STONE,LAVA,SMOKE,FIRE；新: STONE；消失: LAVA,FIRE；Tmax 686.1°C | **PASS** |  |
+| LAVA × FIRE | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 LAVA=64 FIRE=64 → 结束 AIR=1424 WALL=48 STONE=64；中途曾现: STONE,LAVA,SMOKE,FIRE；新: STONE；消失: LAVA,FIRE；Tmax 327.3°C | **PASS** |  |
+| LAVA × FIRE | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 LAVA=576 FIRE=576 → 结束 AIR=2232 WALL=72 STONE=576；中途曾现: STONE,LAVA,SMOKE,FIRE；新: STONE；消失: LAVA,FIRE；Tmax 677.1°C | **PASS** |  |
 | LAVA × GAS | small | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1486 WALL=48 LAVA=1 GAS=1 → 结束 AIR=1487 WALL=48 STONE=1；中途曾现: STONE,LAVA,GAS；新: STONE；消失: LAVA,GAS；Tmax 140.8°C | **PASS** |  |
-| LAVA × GAS | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 LAVA=64 GAS=64 → 结束 AIR=1424 WALL=48 STONE=64；中途曾现: STONE,LAVA,GAS；新: STONE；消失: LAVA,GAS；Tmax 310.4°C | **PASS** |  |
+| LAVA × GAS | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 LAVA=64 GAS=64 → 结束 AIR=1424 WALL=48 STONE=64；中途曾现: STONE,LAVA,GAS；新: STONE；消失: LAVA,GAS；Tmax 322.4°C | **PASS** |  |
 | LAVA × GAS | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 LAVA=576 GAS=576 → 结束 AIR=2232 WALL=72 STONE=574 LAVA=2；中途曾现: STONE,LAVA,GAS；新: STONE；消失: LAVA,GAS；Tmax 699.7°C | **PASS** |  |
 | LAVA × CLONE | small | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1486 WALL=48 LAVA=1 CLONE=1 → 结束 AIR=1475 WALL=48 STONE=12 CLONE=1；中途曾现: STONE,LAVA,CLONE；新: STONE；消失: LAVA；Tmax 149.6°C | **PASS** |  |
 | LAVA × CLONE | mid | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1360 WALL=48 LAVA=64 CLONE=64 → 结束 AIR=1273 WALL=48 STONE=151 CLONE=64；中途曾现: STONE,LAVA,CLONE；新: STONE；消失: LAVA；Tmax 391.5°C | **PASS** |  |
@@ -1333,12 +1333,12 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | LAVA × VIRUS | small | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1486 WALL=48 LAVA=1 VIRUS=1 → 结束 AIR=1486 WALL=48 STONE=1 VIRUS=1；中途曾现: STONE,LAVA,VIRUS；新: STONE；消失: LAVA；Tmax 163.1°C | **PASS** |  |
 | LAVA × VIRUS | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 LAVA=64 VIRUS=64 → 结束 AIR=1360 WALL=48 STONE=64 VIRUS=64；中途曾现: STONE,LAVA,VIRUS；新: STONE；消失: LAVA；Tmax 340.4°C | **PASS** |  |
 | LAVA × VIRUS | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 LAVA=576 VIRUS=576 → 结束 AIR=1656 WALL=72 STONE=572 LAVA=4 VIRUS=576；中途曾现: STONE,LAVA,VIRUS；新: STONE；消失: 无；Tmax 699.7°C | **PASS** |  |
-| LAVA × SPRING | small | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1486 WALL=48 LAVA=1 SPRING=1 → 结束 AIR=1463 WALL=48 STONE=1 WATER=23 SPRING=1；中途曾现: STONE,WATER,LAVA,STEAM,SPRING；新: STONE,WATER；消失: LAVA；Tmax 63.0°C | **PASS** |  |
-| LAVA × SPRING | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 LAVA=64 SPRING=64 → 结束 AIR=1201 WALL=48 STONE=64 WATER=149 STEAM=10 SPRING=64；中途曾现: STONE,WATER,LAVA,STEAM,SPRING；新: STONE,WATER,STEAM；消失: LAVA；Tmax 313.4°C | **PASS** |  |
-| LAVA × SPRING | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 LAVA=576 SPRING=576 → 结束 AIR=1332 WALL=72 STONE=574 WATER=319 LAVA=2 STEAM=5 SPRING=576；中途曾现: STONE,WATER,LAVA,STEAM,SPRING；新: STONE,WATER,STEAM；消失: 无；Tmax 699.7°C | **PASS** |  |
+| LAVA × SPRING | small | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1486 WALL=48 LAVA=1 SPRING=1 → 结束 AIR=1459 WALL=48 STONE=1 WATER=27 SPRING=1；中途曾现: STONE,WATER,LAVA,STEAM,SPRING；新: STONE,WATER；消失: LAVA；Tmax 61.1°C | **PASS** |  |
+| LAVA × SPRING | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 LAVA=64 SPRING=64 → 结束 AIR=1191 WALL=48 STONE=64 WATER=157 STEAM=12 SPRING=64；中途曾现: STONE,WATER,LAVA,STEAM,SPRING；新: STONE,WATER,STEAM；消失: LAVA；Tmax 323.8°C | **PASS** |  |
+| LAVA × SPRING | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 LAVA=576 SPRING=576 → 结束 AIR=1325 WALL=72 STONE=574 WATER=327 LAVA=2 STEAM=4 SPRING=576；中途曾现: STONE,WATER,LAVA,STEAM,SPRING；新: STONE,WATER,STEAM；消失: 无；Tmax 699.7°C | **PASS** |  |
 | LAVA × TNT | small | 高温岩浆引爆炸药 | 起始 AIR=1486 WALL=48 LAVA=1 TNT=1 → 结束 AIR=1487 WALL=48 STONE=1；中途曾现: STONE,LAVA,FIRE,TNT；新: STONE；消失: LAVA,TNT；Tmax 196.0°C | **PASS** |  |
 | LAVA × TNT | mid | 高温岩浆引爆炸药 | 起始 AIR=1360 WALL=48 LAVA=64 TNT=64 → 结束 AIR=1459 WALL=48 STONE=28 LAVA=1；中途曾现: STONE,LAVA,SMOKE,FIRE,TNT；新: STONE；消失: TNT；Tmax 699.3°C | **PASS** |  |
-| LAVA × TNT | large | 高温岩浆引爆炸药 | 起始 AIR=1656 WALL=72 LAVA=576 TNT=576 → 结束 AIR=2342 WALL=72 STONE=164 LAVA=302；中途曾现: STONE,LAVA,SMOKE,FIRE,TNT；新: STONE；消失: TNT；Tmax 883.9°C | **PASS** |  |
+| LAVA × TNT | large | 高温岩浆引爆炸药 | 起始 AIR=1656 WALL=72 LAVA=576 TNT=576 → 结束 AIR=2342 WALL=72 STONE=163 LAVA=303；中途曾现: STONE,LAVA,SMOKE,FIRE,TNT；新: STONE；消失: TNT；Tmax 881.2°C | **PASS** |  |
 | ACID × ACID | small | 同种物质相邻：自然堆叠/流动/相变，无化学变化 | 起始 AIR=1487 WALL=48 ACID=1 → 结束 AIR=1487 WALL=48 ACID=1；中途曾现: ACID；新: 无；消失: 无；Tmax 20.0°C | **N/A** |  |
 | ACID × ACID | mid | 同种物质相邻：自然堆叠/流动/相变，无化学变化 | 起始 AIR=1424 WALL=48 ACID=64 → 结束 AIR=1424 WALL=48 ACID=64；中途曾现: ACID；新: 无；消失: 无；Tmax 20.0°C | **N/A** |  |
 | ACID × ACID | large | 同种物质相邻：自然堆叠/流动/相变，无化学变化 | 起始 AIR=2232 WALL=72 ACID=576 → 结束 AIR=2232 WALL=72 ACID=576；中途曾现: ACID；新: 无；消失: 无；Tmax 20.0°C | **N/A** |  |
@@ -1352,8 +1352,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | ACID × SMOKE | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 ACID=64 SMOKE=64 → 结束 AIR=1424 WALL=48 ACID=64；中途曾现: ACID,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | ACID × SMOKE | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 ACID=576 SMOKE=576 → 结束 AIR=2232 WALL=72 ACID=576；中途曾现: ACID,SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | ACID × FIRE | small | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1486 WALL=48 ACID=1 FIRE=1 → 结束 AIR=1487 WALL=48 ACID=1；中途曾现: ACID,FIRE；新: 无；消失: FIRE；Tmax 24.9°C | **PASS** |  |
-| ACID × FIRE | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 ACID=64 FIRE=64 → 结束 AIR=1424 WALL=48 ACID=64；中途曾现: ACID,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 180.4°C | **PASS** |  |
-| ACID × FIRE | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 ACID=576 FIRE=576 → 结束 AIR=2232 WALL=72 ACID=576；中途曾现: ACID,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 274.5°C | **PASS** |  |
+| ACID × FIRE | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 ACID=64 FIRE=64 → 结束 AIR=1424 WALL=48 ACID=64；中途曾现: ACID,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 180.1°C | **PASS** |  |
+| ACID × FIRE | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 ACID=576 FIRE=576 → 结束 AIR=2232 WALL=72 ACID=576；中途曾现: ACID,SMOKE,FIRE；新: 无；消失: FIRE；Tmax 274.9°C | **PASS** |  |
 | ACID × GAS | small | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1486 WALL=48 ACID=1 GAS=1 → 结束 AIR=1487 WALL=48 ACID=1；中途曾现: ACID,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | ACID × GAS | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 ACID=64 GAS=64 → 结束 AIR=1424 WALL=48 ACID=64；中途曾现: ACID,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | ACID × GAS | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 ACID=576 GAS=576 → 结束 AIR=2232 WALL=72 ACID=576；中途曾现: ACID,GAS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
@@ -1379,8 +1379,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | LN2 × SMOKE | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 LN2=64 SMOKE=64 → 结束 AIR=1488 WALL=48；中途曾现: LN2,SMOKE；新: 无；消失: LN2,SMOKE；Tmax 20.0°C | **PASS** |  |
 | LN2 × SMOKE | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 LN2=576 SMOKE=576 → 结束 AIR=2808 WALL=72；中途曾现: LN2,SMOKE；新: 无；消失: LN2,SMOKE；Tmax 20.0°C | **PASS** |  |
 | LN2 × FIRE | small | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1486 WALL=48 LN2=1 FIRE=1 → 结束 AIR=1488 WALL=48；中途曾现: LN2,FIRE；新: 无；消失: LN2,FIRE；Tmax 22.1°C | **PASS** |  |
-| LN2 × FIRE | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 LN2=64 FIRE=64 → 结束 AIR=1488 WALL=48；中途曾现: LN2,SMOKE,FIRE；新: 无；消失: LN2,FIRE；Tmax 143.5°C | **PASS** |  |
-| LN2 × FIRE | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 LN2=576 FIRE=576 → 结束 AIR=2808 WALL=72；中途曾现: LN2,SMOKE,FIRE；新: 无；消失: LN2,FIRE；Tmax 209.9°C | **PASS** |  |
+| LN2 × FIRE | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 LN2=64 FIRE=64 → 结束 AIR=1488 WALL=48；中途曾现: LN2,SMOKE,FIRE；新: 无；消失: LN2,FIRE；Tmax 139.8°C | **PASS** |  |
+| LN2 × FIRE | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 LN2=576 FIRE=576 → 结束 AIR=2808 WALL=72；中途曾现: LN2,SMOKE,FIRE；新: 无；消失: LN2,FIRE；Tmax 213.0°C | **PASS** |  |
 | LN2 × GAS | small | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1486 WALL=48 LN2=1 GAS=1 → 结束 AIR=1488 WALL=48；中途曾现: LN2,GAS；新: 无；消失: LN2,GAS；Tmax 20.0°C | **PASS** |  |
 | LN2 × GAS | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 LN2=64 GAS=64 → 结束 AIR=1488 WALL=48；中途曾现: LN2,GAS；新: 无；消失: LN2,GAS；Tmax 20.0°C | **PASS** |  |
 | LN2 × GAS | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 LN2=576 GAS=576 → 结束 AIR=2808 WALL=72；中途曾现: LN2,GAS；新: 无；消失: LN2,GAS；Tmax 20.0°C | **PASS** |  |
@@ -1402,9 +1402,9 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | STEAM × SMOKE | small | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1486 WALL=48 STEAM=1 SMOKE=1 → 结束 AIR=1487 WALL=48 WATER=1；中途曾现: WATER,STEAM,SMOKE；新: WATER；消失: STEAM,SMOKE；Tmax 20.0°C | **PASS** |  |
 | STEAM × SMOKE | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 STEAM=64 SMOKE=64 → 结束 AIR=1424 WALL=48 WATER=64；中途曾现: WATER,STEAM,SMOKE；新: WATER；消失: STEAM,SMOKE；Tmax 20.0°C | **PASS** |  |
 | STEAM × SMOKE | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 STEAM=576 SMOKE=576 → 结束 AIR=2232 WALL=72 WATER=576；中途曾现: WATER,STEAM,SMOKE；新: WATER；消失: STEAM,SMOKE；Tmax 20.0°C | **PASS** |  |
-| STEAM × FIRE | small | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1486 WALL=48 STEAM=1 FIRE=1 → 结束 AIR=1488 WALL=48；中途曾现: STEAM,FIRE；新: 无；消失: STEAM,FIRE；Tmax 22.6°C | **PASS** |  |
-| STEAM × FIRE | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 STEAM=64 FIRE=64 → 结束 AIR=1484 WALL=48 WATER=4；中途曾现: WATER,STEAM,SMOKE,FIRE；新: WATER；消失: STEAM,FIRE；Tmax 128.5°C | **PASS** |  |
-| STEAM × FIRE | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 STEAM=576 FIRE=576 → 结束 AIR=2788 WALL=72 WATER=19 STEAM=1；中途曾现: WATER,STEAM,SMOKE,FIRE；新: WATER；消失: STEAM,FIRE；Tmax 122.2°C | **PASS** |  |
+| STEAM × FIRE | small | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1486 WALL=48 STEAM=1 FIRE=1 → 结束 AIR=1488 WALL=48；中途曾现: STEAM,FIRE；新: 无；消失: STEAM,FIRE；Tmax 22.7°C | **PASS** |  |
+| STEAM × FIRE | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 STEAM=64 FIRE=64 → 结束 AIR=1486 WALL=48 WATER=2；中途曾现: WATER,STEAM,SMOKE,FIRE；新: WATER；消失: STEAM,FIRE；Tmax 128.8°C | **PASS** |  |
+| STEAM × FIRE | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 STEAM=576 FIRE=576 → 结束 AIR=2789 WALL=72 WATER=18 STEAM=1；中途曾现: WATER,STEAM,SMOKE,FIRE；新: WATER；消失: FIRE；Tmax 126.2°C | **PASS** |  |
 | STEAM × GAS | small | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1486 WALL=48 STEAM=1 GAS=1 → 结束 AIR=1487 WALL=48 WATER=1；中途曾现: WATER,STEAM,GAS；新: WATER；消失: STEAM,GAS；Tmax 20.0°C | **PASS** |  |
 | STEAM × GAS | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 STEAM=64 GAS=64 → 结束 AIR=1424 WALL=48 WATER=64；中途曾现: WATER,STEAM,GAS；新: WATER；消失: STEAM,GAS；Tmax 20.0°C | **PASS** |  |
 | STEAM × GAS | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 STEAM=576 GAS=576 → 结束 AIR=2232 WALL=72 WATER=576；中途曾现: WATER,STEAM,GAS；新: WATER；消失: STEAM,GAS；Tmax 20.0°C | **PASS** |  |
@@ -1424,8 +1424,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | SMOKE × SMOKE | mid | 同种物质相邻：自然堆叠/流动/相变，无化学变化 | 起始 AIR=1424 WALL=48 SMOKE=64 → 结束 AIR=1488 WALL=48；中途曾现: SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **N/A** |  |
 | SMOKE × SMOKE | large | 同种物质相邻：自然堆叠/流动/相变，无化学变化 | 起始 AIR=2232 WALL=72 SMOKE=576 → 结束 AIR=2808 WALL=72；中途曾现: SMOKE；新: 无；消失: SMOKE；Tmax 20.0°C | **N/A** |  |
 | SMOKE × FIRE | small | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1486 WALL=48 SMOKE=1 FIRE=1 → 结束 AIR=1488 WALL=48；中途曾现: SMOKE,FIRE；新: 无；消失: SMOKE,FIRE；Tmax 22.6°C | **PASS** |  |
-| SMOKE × FIRE | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 SMOKE=64 FIRE=64 → 结束 AIR=1488 WALL=48；中途曾现: SMOKE,FIRE；新: 无；消失: SMOKE,FIRE；Tmax 154.6°C | **PASS** |  |
-| SMOKE × FIRE | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 SMOKE=576 FIRE=576 → 结束 AIR=2808 WALL=72；中途曾现: SMOKE,FIRE；新: 无；消失: SMOKE,FIRE；Tmax 206.0°C | **PASS** |  |
+| SMOKE × FIRE | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 SMOKE=64 FIRE=64 → 结束 AIR=1488 WALL=48；中途曾现: SMOKE,FIRE；新: 无；消失: SMOKE,FIRE；Tmax 155.1°C | **PASS** |  |
+| SMOKE × FIRE | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 SMOKE=576 FIRE=576 → 结束 AIR=2808 WALL=72；中途曾现: SMOKE,FIRE；新: 无；消失: SMOKE,FIRE；Tmax 210.9°C | **PASS** |  |
 | SMOKE × GAS | small | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1486 WALL=48 SMOKE=1 GAS=1 → 结束 AIR=1488 WALL=48；中途曾现: SMOKE,GAS；新: 无；消失: SMOKE,GAS；Tmax 20.0°C | **PASS** |  |
 | SMOKE × GAS | mid | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1360 WALL=48 SMOKE=64 GAS=64 → 结束 AIR=1488 WALL=48；中途曾现: SMOKE,GAS；新: 无；消失: SMOKE,GAS；Tmax 20.0°C | **PASS** |  |
 | SMOKE × GAS | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 SMOKE=576 GAS=576 → 结束 AIR=2808 WALL=72；中途曾现: SMOKE,GAS；新: 无；消失: SMOKE,GAS；Tmax 20.0°C | **PASS** |  |
@@ -1442,23 +1442,23 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | SMOKE × TNT | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 SMOKE=64 TNT=64 → 结束 AIR=1424 WALL=48 TNT=64；中途曾现: SMOKE,TNT；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | SMOKE × TNT | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 SMOKE=576 TNT=576 → 结束 AIR=2232 WALL=72 TNT=576；中途曾现: SMOKE,TNT；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | FIRE × FIRE | small | 同种物质相邻：自然堆叠/流动/相变，无化学变化 | 起始 AIR=1487 WALL=48 FIRE=1 → 结束 AIR=1488 WALL=48；中途曾现: FIRE；新: 无；消失: FIRE；Tmax 22.6°C | **N/A** |  |
-| FIRE × FIRE | mid | 同种物质相邻：自然堆叠/流动/相变，无化学变化 | 起始 AIR=1424 WALL=48 FIRE=64 → 结束 AIR=1488 WALL=48；中途曾现: SMOKE,FIRE；新: 无；消失: FIRE；Tmax 152.3°C | **N/A** |  |
-| FIRE × FIRE | large | 同种物质相邻：自然堆叠/流动/相变，无化学变化 | 起始 AIR=2232 WALL=72 FIRE=576 → 结束 AIR=2808 WALL=72；中途曾现: SMOKE,FIRE；新: 无；消失: FIRE；Tmax 221.0°C | **N/A** |  |
-| FIRE × GAS | small | 瓦斯（甲烷）易燃易爆，火焰迅速传播 | 起始 AIR=1486 WALL=48 FIRE=1 GAS=1 → 结束 AIR=1487 WALL=48 ASH=1；中途曾现: ASH,SMOKE,FIRE,GAS；新: ASH；消失: FIRE,GAS；Tmax 93.6°C | **PASS** |  |
-| FIRE × GAS | mid | 瓦斯（甲烷）易燃易爆，火焰迅速传播 | 起始 AIR=1360 WALL=48 FIRE=64 GAS=64 → 结束 AIR=1424 WALL=48 ASH=64；中途曾现: ASH,SMOKE,FIRE,GAS；新: ASH；消失: FIRE,GAS；Tmax 158.0°C | **PASS** |  |
-| FIRE × GAS | large | 瓦斯（甲烷）易燃易爆，火焰迅速传播 | 起始 AIR=1656 WALL=72 FIRE=576 GAS=576 → 结束 AIR=2236 WALL=72 ASH=572；中途曾现: ASH,SMOKE,FIRE,GAS；新: ASH；消失: FIRE,GAS；Tmax 210.0°C | **PASS** |  |
+| FIRE × FIRE | mid | 同种物质相邻：自然堆叠/流动/相变，无化学变化 | 起始 AIR=1424 WALL=48 FIRE=64 → 结束 AIR=1488 WALL=48；中途曾现: SMOKE,FIRE；新: 无；消失: FIRE；Tmax 154.8°C | **N/A** |  |
+| FIRE × FIRE | large | 同种物质相邻：自然堆叠/流动/相变，无化学变化 | 起始 AIR=2232 WALL=72 FIRE=576 → 结束 AIR=2808 WALL=72；中途曾现: SMOKE,FIRE；新: 无；消失: FIRE；Tmax 223.9°C | **N/A** |  |
+| FIRE × GAS | small | 瓦斯（甲烷）易燃易爆，火焰迅速传播 | 起始 AIR=1486 WALL=48 FIRE=1 GAS=1 → 结束 AIR=1487 WALL=48 ASH=1；中途曾现: ASH,SMOKE,FIRE,GAS；新: ASH；消失: FIRE,GAS；Tmax 94.7°C | **PASS** |  |
+| FIRE × GAS | mid | 瓦斯（甲烷）易燃易爆，火焰迅速传播 | 起始 AIR=1360 WALL=48 FIRE=64 GAS=64 → 结束 AIR=1424 WALL=48 ASH=64；中途曾现: ASH,SMOKE,FIRE,GAS；新: ASH；消失: FIRE,GAS；Tmax 157.5°C | **PASS** |  |
+| FIRE × GAS | large | 瓦斯（甲烷）易燃易爆，火焰迅速传播 | 起始 AIR=1656 WALL=72 FIRE=576 GAS=576 → 结束 AIR=2235 WALL=72 ASH=573；中途曾现: ASH,SMOKE,FIRE,GAS；新: ASH；消失: FIRE,GAS；Tmax 215.2°C | **PASS** |  |
 | FIRE × CLONE | small | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1486 WALL=48 FIRE=1 CLONE=1 → 结束 AIR=1487 WALL=48 CLONE=1；中途曾现: FIRE,CLONE；新: 无；消失: FIRE；Tmax 24.2°C | **PASS** |  |
 | FIRE × CLONE | mid | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1360 WALL=48 FIRE=64 CLONE=64 → 结束 AIR=1424 WALL=48 CLONE=64；中途曾现: SMOKE,FIRE,CLONE；新: 无；消失: FIRE；Tmax 142.9°C | **PASS** |  |
-| FIRE × CLONE | large | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1656 WALL=72 FIRE=576 CLONE=576 → 结束 AIR=2232 WALL=72 CLONE=576；中途曾现: SMOKE,FIRE,CLONE；新: 无；消失: FIRE；Tmax 184.2°C | **PASS** |  |
-| FIRE × VIRUS | small | 现实中病毒不是可燃物；本作把病毒设为可燃（演绎化设定） | 起始 AIR=1486 WALL=48 FIRE=1 VIRUS=1 → 结束 AIR=1488 WALL=48；中途曾现: SMOKE,FIRE,VIRUS；新: 无；消失: FIRE,VIRUS；Tmax 45.7°C | **PASS** |  |
-| FIRE × VIRUS | mid | 现实中病毒不是可燃物；本作把病毒设为可燃（演绎化设定） | 起始 AIR=1360 WALL=48 FIRE=64 VIRUS=64 → 结束 AIR=1485 WALL=48 ASH=3；中途曾现: ASH,SMOKE,FIRE,VIRUS；新: ASH；消失: FIRE,VIRUS；Tmax 136.4°C | **PASS** |  |
-| FIRE × VIRUS | large | 现实中病毒不是可燃物；本作把病毒设为可燃（演绎化设定） | 起始 AIR=1656 WALL=72 FIRE=576 VIRUS=576 → 结束 AIR=2650 WALL=72 ASH=46 VIRUS=112；中途曾现: ASH,SMOKE,FIRE,VIRUS；新: ASH,SMOKE；消失: FIRE；Tmax 199.1°C | **PASS** |  |
+| FIRE × CLONE | large | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1656 WALL=72 FIRE=576 CLONE=576 → 结束 AIR=2232 WALL=72 CLONE=576；中途曾现: SMOKE,FIRE,CLONE；新: 无；消失: FIRE；Tmax 191.9°C | **PASS** |  |
+| FIRE × VIRUS | small | 现实中病毒不是可燃物；本作把病毒设为可燃（演绎化设定） | 起始 AIR=1486 WALL=48 FIRE=1 VIRUS=1 → 结束 AIR=1488 WALL=48；中途曾现: SMOKE,FIRE,VIRUS；新: 无；消失: FIRE,VIRUS；Tmax 45.9°C | **PASS** |  |
+| FIRE × VIRUS | mid | 现实中病毒不是可燃物；本作把病毒设为可燃（演绎化设定） | 起始 AIR=1360 WALL=48 FIRE=64 VIRUS=64 → 结束 AIR=1485 WALL=48 ASH=3；中途曾现: ASH,SMOKE,FIRE,VIRUS；新: ASH；消失: FIRE,VIRUS；Tmax 134.4°C | **PASS** |  |
+| FIRE × VIRUS | large | 现实中病毒不是可燃物；本作把病毒设为可燃（演绎化设定） | 起始 AIR=1656 WALL=72 FIRE=576 VIRUS=576 → 结束 AIR=2641 WALL=72 ASH=48 VIRUS=119；中途曾现: ASH,SMOKE,FIRE,VIRUS；新: ASH；消失: FIRE；Tmax 208.4°C | **PASS** |  |
 | FIRE × SPRING | small | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1486 WALL=48 FIRE=1 SPRING=1 → 结束 AIR=1423 WALL=48 WATER=64 SPRING=1；中途曾现: WATER,FIRE,SPRING；新: WATER；消失: FIRE；Tmax 22.0°C | **PASS** |  |
-| FIRE × SPRING | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 FIRE=64 SPRING=64 → 结束 AIR=1059 WALL=48 WATER=365 SPRING=64；中途曾现: WATER,STEAM,SMOKE,FIRE,SPRING；新: WATER；消失: FIRE；Tmax 63.8°C | **PASS** |  |
-| FIRE × SPRING | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 FIRE=576 SPRING=576 → 结束 AIR=1362 WALL=72 WATER=870 SPRING=576；中途曾现: WATER,STEAM,SMOKE,FIRE,SPRING；新: WATER；消失: FIRE；Tmax 79.4°C | **PASS** |  |
+| FIRE × SPRING | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 FIRE=64 SPRING=64 → 结束 AIR=1060 WALL=48 WATER=364 SPRING=64；中途曾现: WATER,STEAM,SMOKE,FIRE,SPRING；新: WATER；消失: FIRE；Tmax 65.3°C | **PASS** |  |
+| FIRE × SPRING | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 FIRE=576 SPRING=576 → 结束 AIR=1372 WALL=72 WATER=860 SPRING=576；中途曾现: WATER,STEAM,SMOKE,FIRE,SPRING；新: WATER；消失: FIRE；Tmax 90.1°C | **PASS** |  |
 | FIRE × TNT | small | 火焰/高温引爆炸药，半径内全毁 | 起始 AIR=1486 WALL=48 FIRE=1 TNT=1 → 结束 AIR=1488 WALL=48；中途曾现: FIRE,TNT；新: 无；消失: FIRE,TNT；Tmax 126.6°C | **PASS** |  |
-| FIRE × TNT | mid | 火焰/高温引爆炸药，半径内全毁 | 起始 AIR=1360 WALL=48 FIRE=64 TNT=64 → 结束 AIR=1488 WALL=48；中途曾现: SMOKE,FIRE,TNT；新: 无；消失: FIRE,TNT；Tmax 509.0°C | **PASS** |  |
-| FIRE × TNT | large | 火焰/高温引爆炸药，半径内全毁 | 起始 AIR=1656 WALL=72 FIRE=576 TNT=576 → 结束 AIR=2808 WALL=72；中途曾现: SMOKE,FIRE,TNT；新: 无；消失: FIRE,TNT；Tmax 609.1°C | **PASS** |  |
+| FIRE × TNT | mid | 火焰/高温引爆炸药，半径内全毁 | 起始 AIR=1360 WALL=48 FIRE=64 TNT=64 → 结束 AIR=1488 WALL=48；中途曾现: SMOKE,FIRE,TNT；新: 无；消失: FIRE,TNT；Tmax 509.3°C | **PASS** |  |
+| FIRE × TNT | large | 火焰/高温引爆炸药，半径内全毁 | 起始 AIR=1656 WALL=72 FIRE=576 TNT=576 → 结束 AIR=2808 WALL=72；中途曾现: SMOKE,FIRE,TNT；新: 无；消失: FIRE,TNT；Tmax 609.3°C | **PASS** |  |
 | GAS × GAS | small | 同种物质相邻：自然堆叠/流动/相变，无化学变化 | 起始 AIR=1487 WALL=48 GAS=1 → 结束 AIR=1488 WALL=48；中途曾现: GAS；新: 无；消失: GAS；Tmax 20.0°C | **N/A** |  |
 | GAS × GAS | mid | 同种物质相邻：自然堆叠/流动/相变，无化学变化 | 起始 AIR=1424 WALL=48 GAS=64 → 结束 AIR=1488 WALL=48；中途曾现: GAS；新: 无；消失: GAS；Tmax 20.0°C | **N/A** |  |
 | GAS × GAS | large | 同种物质相邻：自然堆叠/流动/相变，无化学变化 | 起始 AIR=2232 WALL=72 GAS=576 → 结束 AIR=2808 WALL=72；中途曾现: GAS；新: 无；消失: GAS；Tmax 20.0°C | **N/A** |  |
@@ -1543,7 +1543,7 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | SALT × LAVA | PASS；活: SALT | PASS；活: SALT | PASS；活: SALT+LAVA | PHASE |
 | SALT × FIRE | PASS；活: SALT | PASS；活: SALT | PASS；活: SALT | PHASE |
 | DUST × LAVA | PASS；活: DUST | PASS；活: DUST | PASS；活: DUST+LAVA | THERMAL |
-| DUST × FIRE | PASS；活: 全灭 | PASS；活: 全灭 | PASS；活: DUST+FIRE | REACTION |
+| DUST × FIRE | PASS；活: 全灭 | PASS；活: 全灭 | PASS；活: DUST | REACTION |
 | SNOW × SEED | PASS；活: 全灭 | PASS；活: SEED | PASS；活: SEED | MIX |
 | SNOW × LAVA | PASS；活: 全灭 | PASS；活: 全灭 | PASS；活: LAVA | PHASE |
 | SNOW × LN2 | PASS；活: 全灭 | PASS；活: 全灭 | PASS；活: 全灭 | PHASE |
@@ -1558,11 +1558,11 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | SEED × STEAM | PASS；活: 全灭 | PASS；活: SEED | PASS；活: SEED | FLOW |
 | SEED × FIRE | PASS；活: 全灭 | PASS；活: SEED | PASS；活: SEED | REACTION |
 | SEED × SPRING | PASS；活: SPRING | PASS；活: SEED+SPRING | PASS；活: SEED+SPRING | STRUCT |
-| WATER × LAVA | PASS；活: 全灭 | PASS；活: 全灭 | PASS；活: WATER+LAVA | REACTION |
+| WATER × LAVA | PASS；活: 全灭 | PASS；活: WATER | PASS；活: WATER+LAVA | REACTION |
 | WATER × LN2 | PASS；活: WATER | PASS；活: WATER | PASS；活: WATER | PHASE |
 | WATER × FIRE | PASS；活: WATER | PASS；活: WATER | PASS；活: WATER | REACTION |
 | OIL × LAVA | PASS；活: OIL | PASS；活: OIL | PASS；活: OIL+LAVA | THERMAL |
-| OIL × FIRE | PASS；活: 全灭 | PASS；活: 全灭 | PASS；活: 全灭 | REACTION |
+| OIL × FIRE | PASS；活: 全灭 | PASS；活: 全灭 | PASS；活: OIL | REACTION |
 | LAVA × STEAM | PASS；活: 全灭 | PASS；活: 全灭 | PASS；活: LAVA+STEAM | THERMAL |
 | LAVA × SMOKE | PASS；活: 全灭 | PASS；活: 全灭 | PASS；活: LAVA | THERMAL |
 | LAVA × FIRE | PASS；活: 全灭 | PASS；活: 全灭 | PASS；活: 全灭 | THERMAL |
@@ -1614,7 +1614,7 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | GAS × CLONE | REACTION | PASS；起始 AIR=1360 WALL=48 GAS=64 CLONE=64 → 结束 AIR=1424 WALL=48 CLONE=64；中途曾现: GAS,CLONE；新: 无；消失… |
 | TNT × TNT | REACTION | PASS；起始 AIR=1424 WALL=48 TNT=64 → 结束 AIR=1424 WALL=48 TNT=64；中途曾现: TNT；新: 无；消失: 无；Tmax 20.0°C… |
 
-### 3.3 方向性偏差（A×B 与 B×A 的"判定或产物集合"不同，10 组）
+### 3.3 方向性偏差（A×B 与 B×A 的"判定或产物集合"不同，9 组）
 
 > 邻接交互本应近似对称；此处仅比较**判定与产物种类**（不比较双方存活身份与计数，避免位置/随机噪声）。真正不一致者多为"上下方向偏置"（如火焰向上蔓延更强、液体沿重力方向分层）。
 
@@ -1623,13 +1623,12 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | WOOD×FIRE vs FIRE×WOOD | small | PASS；新 ASH | PASS；新 无 |
 | PLANT×STEAM vs STEAM×PLANT | mid | PASS；新 无 | PASS；新 WATER |
 | PLANT×FIRE vs FIRE×PLANT | small | PASS；新 无 | PASS；新 ASH |
-| SNOW×LAVA vs LAVA×SNOW | mid | PASS；新 STONE,WATER,STEAM | PASS；新 STONE,STEAM |
-| COAL×FIRE vs FIRE×COAL | mid | PASS；新 ASH | PASS；新 ASH,SMOKE |
+| DUST×FIRE vs FIRE×DUST | large | PASS；新 ASH | PASS；新 ASH,SMOKE |
 | SEED×FIRE vs FIRE×SEED | small | PASS；新 无 | PASS；新 ASH |
+| WATER×FIRE vs FIRE×WATER | large | PASS；新 STEAM | PASS；新 无 |
 | LAVA×ACID vs ACID×LAVA | small | PASS；新 STONE | PASS；新 无 |
 | LAVA×STEAM vs STEAM×LAVA | mid | PASS；新 STONE | PASS；新 STONE,WATER |
 | LAVA×TNT vs TNT×LAVA | small | PASS；新 STONE | PASS；新 无 |
-| FIRE×VIRUS vs VIRUS×FIRE | large | PASS；新 ASH,SMOKE | PASS；新 ASH |
 
 > 判读：**"量多少都一样"在反应类组合里往往是设计缺陷**（例如灭火与水量无关，见 §4）。方向性偏差若集中出现，说明蔓延/浮力规则带有未声明的偏置。
 

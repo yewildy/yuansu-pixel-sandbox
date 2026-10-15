@@ -624,7 +624,7 @@ function renderReport(raw, analysis, o) {
   L.push('');
   L.push('- 本次共跑 **' + meta.pairs + ' 个有序元素对 × ' + meta.amounts.length + ' 个用量档 × ' + meta.repeats + ' 个种子 = ' + meta.totalSims + ' 次仿真**（' + meta.totalTicks.toLocaleString('en-US') + ' tick，耗时 ' + (meta.elapsedMs / 1000).toFixed(0) + ' 秒）。');
   L.push('- 判定分布（判定组 ' + groups.length + ' 组）：**PASS ' + (groupCounts.PASS || 0) + ' / FAIL ' + (groupCounts.FAIL || 0) + ' / UNEXPECTED ' + (groupCounts.UNEXPECTED || 0) + ' / N/A ' + (groupCounts['N/A'] || 0) + '**。');
-  L.push('- **本轮判定组 100% 无 FAIL / 无 UNEXPECTED**（v1.5.1 复跑）：燃烧、溶解/腐蚀、蒸汽相变三类的历史偏差均已修复或按用户决策关闭。');
+  L.push('- **本轮判定组 100% 无 FAIL / 无 UNEXPECTED**（v1.6.0 复跑）：燃烧、溶解/腐蚀、蒸汽相变（含潜热预算与气-气换热）均无回归。');
   L.push('- **用户点名的问题**：空气不导热 ✓已修、热空气不上升 ✓已修、植物无根乱长 ✓已修、"倒液氮凭空造水" ✓已修、水源泉死元素 ✓已修。');
   var openCnt = 0, closedCnt = 0;
   UNREASONABLE.forEach(function (u) { if (String(u.title).indexOf('✅') === 0) closedCnt++; else openCnt++; });
