@@ -60,8 +60,23 @@
     var C = Elements.volHeat, iC = Elements.invVolHeat;
     var CREF = Balance.PHYS.HEAT_CAP_REF, rMax = Balance.PHYS.CONDUCT_R_MAX;
     var selfK = Balance.AIR.SELF_K, selfR = Balance.AIR.SELF_R, eps = Balance.AIR.CONDUCT_EPS;
+    var gasR = Balance.PHYS.GAS_GAS_R;
     var aSelf = alpha * selfK;
     var i, j, x, y, row, ei, ej, K, q, dT, ci, cj, sum, r, f;
+
+    /* v1.5.1：气体查找表（state==='gas' 且非 FIRE）。气-气配对改走热惯性系数 gasR，
+     * 不再用体积热容公式（后者对气体恒被钳到 CONDUCT_R_MAX=0.2 = 瞬间均温，
+     * 实测单格 100 °C 蒸汽 10 tick 就被空气吃干成 20 °C —— 见 balance.js GAS_GAS_R 注释）。
+     * 惰性构建一次，热路径只做两次数组查表。 */
+    if (!diffuse._gasP) {
+      var gp = new Uint8Array(32);
+      for (q = 1; q <= 31; q++) {
+        var Eq = Elements.ELEMENTS[q];
+        if (Eq && Eq.state === 'gas' && q !== ID.FIRE) gp[q] = 1;
+      }
+      diffuse._gasP = gp;
+    }
+    var gasP = diffuse._gasP;
 
     for (i = 0; i < n; i++) next[i] = temp[i];
 
@@ -78,6 +93,7 @@
             if (!(ei === 1 && ej === 1 && dT < eps && dT > -eps)) {   // 均匀空气近平衡 → 跳过
               ci = C[ei]; cj = C[ej]; sum = ci + cj;
               if (ei === 1 && ej === 1) r = selfR;      // 静止空气是热的不良导体
+              else if (gasP[ei] && gasP[ej]) r = gasR; // v1.5.1：气-气热惯性（蒸汽/烟/瓦斯）
               else r = alpha * ((k[ei] + k[ej]) * 0.5) * CREF * sum * iC[ei] * iC[ej];
               if (r > rMax) r = rMax;
               f = r / sum;
@@ -105,6 +121,7 @@
             if (!(ei === 1 && ej === 1 && dT < eps && dT > -eps)) {
               ci = C[ei]; cj = C[ej]; sum = ci + cj;
               if (ei === 1 && ej === 1) r = selfR;      // 静止空气是热的不良导体
+              else if (gasP[ei] && gasP[ej]) r = gasR; // v1.5.1：气-气热惯性（蒸汽/烟/瓦斯）
               else r = alpha * ((k[ei] + k[ej]) * 0.5) * CREF * sum * iC[ei] * iC[ej];
               if (r > rMax) r = rMax;
               f = r / sum;

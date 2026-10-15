@@ -1,7 +1,8 @@
 /*
- * transitions.js — 相变判定（docs/PHYSICS.md §7 + §6.4 潜热平台）
+ * transitions.js — 相变判定（docs/PHYSICS.md §7 + §6.4 潜热平台 + docs/CONDENSATION-MODEL.md §6）
  *   读 grid.nextTemp（导热结果），写 element / nextTemp / latent。
  *   两道闸串联：① 能量闸（latent ≥ LATENT_TICKS）② 随机闸（rnd < p(T)）。
+ *   **例外：蒸汽凝结不走能量闸**（v1.5.1）—— 改为纯温度驱动，见 process() 的 STEAM case。
  *   零 DOM。
  */
 (function (root) {
@@ -13,16 +14,6 @@
   var ID = Elements.ID;
   var ELS = Elements.ELEMENTS;
   var P = Balance.PHYS;
-
-  function hasEmpty4(grid, i) {
-    var el = grid.element, w = grid.w, h = grid.h;
-    var x = i % w, y = (i / w) | 0;
-    if (x > 0 && el[i - 1] === 1) return true;
-    if (x < w - 1 && el[i + 1] === 1) return true;
-    if (y > 0 && el[i - w] === 1) return true;
-    if (y < h - 1 && el[i + w] === 1) return true;
-    return false;
-  }
 
   function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
@@ -53,7 +44,7 @@
     transitions = 0;
     var w = grid.w, h = grid.h;
     var el = grid.element, nt = grid.nextTemp, lat = grid.latent;
-    var x, y, i, e, T, p;
+    var x, y, i, e, T, p, sub;
 
     for (y = 0; y < h; y++) {
       for (x = 0; x < w; x++) {
@@ -82,10 +73,13 @@
               }
             } else {
               if (lat[i] > 0) lat[i]--;
-              if (T >= Balance.WATER.EVAP_SURF_THRESH && T < 100 && hasEmpty4(grid, i)) {
-                p = Balance.WATER.EVAP_SURF_COEF * (T - Balance.WATER.EVAP_SURF_THRESH);
-                if (RNG.hash01(x, y, ID.WATER * 131 + tick) < p) { el[i] = ID.STEAM; lat[i] = 0; transitions++; }
-              }
+              /* v1.5.1：**删除低于 100 °C 的表面蒸发路径**。
+               * 旧代码在这里让 60–99 °C 的水变成同温度的 STEAM（实测 70 °C 水面产出 43.5 °C
+               * 的"蒸汽"），违反用户要求的不变式「水蒸气是一百度以上的」，而且那种蒸汽
+               * 一生成就低于饱和温度、按温度判据立刻又凝结回去，纯属来回空转。
+               * 现在 STEAM 的唯一来源是上面的沸腾分支（T ≥ 100 °C）。
+               * 物理上 60 °C 的水确实会蒸发，但那是看不见的水汽（应并入空气湿度场，
+               * 本作无湿度场）；STEAM 元素代表可见白汽（沸腾产物），与原版 Powder Game 一致。 */
             }
             break;
 
@@ -113,22 +107,29 @@
             } else if (lat[i] > 0) lat[i]--;
             break;
 
-          /* ---- 汽 → 水（冷凝，v1.2.0 接触成核） ---- */
+          /* ---- 汽 → 水（冷凝）★v1.5.1 改为**纯温度驱动** ----
+           * 用户实测两条：「水变成蒸汽后就是固定时间会回归，而不是等冷却再凝结成水」
+           * 与「蒸汽必须是一百度以上的，冷到什么温度才落下去，温度要有连贯性」。
+           * 旧实现 = 累积 lat 达 LATENT_TICKS_COND=24 后才掷签 → 观感就是"固定时间自动变水"，
+           * 且蒸汽的显热被导热瞬间倒给空气（见 balance.js GAS_GAS_R），于是先掉到 20 °C
+           * 再变回 20 °C 的水 —— 上去一趟白干，锅里的水每次都要从 20 °C 重新加热。
+           * 新规则（详见 docs/CONDENSATION-MODEL.md §6）：
+           *   ① T ≥ COND_T(100) → 过热蒸汽，不凝结（只有冷却能触发相变）；
+           *   ② T ∈ [COND_T-3, COND_T) → 潜热平台：凝结放热把温度钉在饱和温度，
+           *      故凝出的水就是 ~100 °C，水→汽→水 全程温度连贯；
+           *   ③ T < COND_T → p = COND_P_BASE + COND_P_SLOPE × 过冷度，**无 tick 门槛**；
+           *   ④ 近饱和窗口内缺凝结核 → 乘 HOMO_F（羽流有时间上升）；深度过冷 → 到处都凝。 */
           case 23: /* STEAM */
-            if (T < 100) {
-              if (T >= 98) nt[i] = 100;
-              if (lat[i] < 255) lat[i]++;
-              if (lat[i] >= P.LATENT_TICKS_COND) {
-                p = clamp(Balance.STEAM.COND_COEF * (100 - T), 0, Balance.STEAM.COND_P_MAX);
-                /* 无冷核（四周皆气体/真空）→ 只走极慢的均相成核；贴到冷壁面/冷液面 → 全速。
-                 * v1.4.3：**深度过冷的蒸汽（T < HOMO_FULL_T）不再打折** —— 物理上过冷蒸汽
-                 * 在任何壁面/微粒上都会凝结，只有接近饱和（~100°C）时才需要凝结核慢慢来。
-                 * 旧实现让它以 0.2 折扣在 20°C 长期悬浮（用户实测："一堆只有 20 度的水蒸气"），
-                 * 既不合理也让人以为"蒸汽是固定时间变回水"。 */
-                if (!hasColdNucleus(grid, i) && T > Balance.STEAM.HOMO_FULL_T) p *= Balance.STEAM.HOMO_F;
-                if (RNG.hash01(x, y, ID.STEAM * 131 + tick) < p) { el[i] = ID.WATER; lat[i] = 0; transitions++; }
-              }
-            } else if (lat[i] > 0) lat[i]--;
+            if (T >= Balance.STEAM.COND_T) {
+              if (lat[i] > 0) lat[i]--;
+              break;
+            }
+            if (T >= Balance.STEAM.COND_T - Balance.STEAM.PLATEAU) nt[i] = Balance.STEAM.COND_T;
+            sub = Balance.STEAM.COND_T - T;
+            p = Balance.STEAM.COND_P_BASE + Balance.STEAM.COND_P_SLOPE * sub;
+            if (p > Balance.STEAM.COND_P_MAX) p = Balance.STEAM.COND_P_MAX;
+            if (sub < Balance.STEAM.NUCLEUS_WINDOW && !hasColdNucleus(grid, i)) p *= Balance.STEAM.HOMO_F;
+            if (RNG.hash01(x, y, ID.STEAM * 131 + tick) < p) { el[i] = ID.WATER; lat[i] = 0; transitions++; }
             break;
 
           /* ---- 岩浆 → 石头 ---- */

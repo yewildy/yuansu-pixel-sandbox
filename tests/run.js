@@ -302,7 +302,18 @@ test('8b. balance 键名与 §14 一致（抽样）', function () {
   /* v1.4.3：液体找平流速 / 冲流级联 / 水面滑移 / 过冷凝结阈值 / 火焰接触传热 */
   assert(B.LIQUID.FLOW_K === 1.15 && B.LIQUID.CASCADE === true && B.LIQUID.SLIDE2 === true,
     'LIQUID 找平三参数（v1.4.3）');
-  assert(B.STEAM.HOMO_FULL_T === 50, 'STEAM.HOMO_FULL_T（v1.4.3 过冷凝结阈值）');
+  /* v1.5.1 ★蒸汽凝结改为**纯温度驱动**（用户实测："固定时间会回归 / 蒸汽必须有温度连贯性"）：
+   * 删除 LATENT_TICKS_COND 固定计时器与 HOMO_FULL_T，改用饱和温度 + 过冷度概率。 */
+  assert(B.STEAM.COND_T === 100 && B.STEAM.COND_P_BASE === 0.05 && B.STEAM.COND_P_SLOPE === 0.004,
+    'STEAM 温度驱动凝结三参数（v1.5.1）');
+  assert(B.STEAM.NUCLEUS_WINDOW === 20 && B.STEAM.PLATEAU === 3, 'STEAM 近饱和窗口/潜热平台（v1.5.1）');
+  assert(B.STEAM.HOMO_FULL_T === undefined, 'HOMO_FULL_T 应已删除（被 NUCLEUS_WINDOW 取代）');
+  assert(B.PHYS.LATENT_TICKS_COND === undefined, 'LATENT_TICKS_COND 应已删除（凝结不再有 tick 门槛）');
+  /* v1.5.1 ★气体热惯性：气-气导热不再用体积热容公式（对气体恒被钳到 0.2 = 瞬间均温） */
+  assert(B.PHYS.GAS_GAS_R === 0.006, 'PHYS.GAS_GAS_R（v1.5.1 气体热惯性）');
+  /* v1.5.1：删除低于 100°C 的表面蒸发路径（蒸汽必须 ≥100°C 生成） */
+  assert(B.WATER.EVAP_SURF_THRESH === undefined && B.WATER.EVAP_SURF_COEF === undefined,
+    '低于 100°C 的表面蒸发路径应已删除（v1.5.1）');
   assert(B.FIRE.CONTACT_K === 0.10 && B.PHYS.GAS_CONTACT_K === 0.08,
     '火焰接触/热气体传热系数（v1.4.3 提速）');
   assert(B.PHYS.ENV_RELAX_GAS === 0.0006, 'ENV_RELAX_GAS 应为 0.0006（v1.2.0：蒸汽不再秒冷）');
@@ -726,14 +737,20 @@ test('N1-5. 密封盒开一小孔 → 可持续燃烧（非「一律不烧」）
 });
 
 test('N1-6. 方向偏置：竖直木柱向上蔓延快于向下', function () {
-  var eng = Engine.create({ w: 30, h: 120, seed: 1337 }), g = eng.grid;
-  var cx = 15, yTop = 20, yBot = 100, yLight = 60;
+  /* v1.5.1 修正坏测试：旧版跑到 t=1500 才量"已烧掉的长度"——而上下各只有 40 格可烧，
+   * 两个方向最终都会被填满（上 40 / 下 40），断言 up > down 只能靠"下方向恰好差 3 格"侥幸通过
+   * （实测 GAS_GAS_R=0.2 时 40/37 通过、0.006 时 40/40 失败，但二者在 t≤200 的**推进速率完全一致**）。
+   * 这正是我在 v1.4.2 记过的教训：拿饱和终态当速率指标 → 脆弱的假失败。
+   * 改为量**未饱和期的推进速率**（t=200），它才是"向上蔓延更快"的真实指标。 */
+  var eng = Engine.create({ w: 30, h: 160, seed: 1337 }), g = eng.grid;
+  var cx = 15, yTop = 20, yBot = 140, yLight = 80;      // 上下各 60 格，留足不饱和的空间
   for (var y = yTop; y <= yBot; y++) g.setEl(cx, y, E.WOOD, P.AMBIENT_T);
   g.setEl(cx, yLight, E.FIRE, 600);
-  for (var t = 0; t < 1500; t++) eng.step();
+  for (var t = 0; t < 200; t++) eng.step();             // 未饱和：向上 ~37 / 向下 ~33
   var up = 0; for (var y2 = yLight - 1; y2 >= yTop; y2--) { if (g.element[g.idx(cx, y2)] !== E.WOOD) up++; else break; }
   var down = 0; for (var y3 = yLight + 1; y3 <= yBot; y3++) { if (g.element[g.idx(cx, y3)] !== E.WOOD) down++; else break; }
   assert(up > down, '向上推进 ' + up + ' 应快于向下 ' + down + '（b_dir 上1.5/下0.6）');
+  assert(up < (yLight - yTop), '测试须停在未饱和区（向上 ' + up + ' < ' + (yLight - yTop) + '），否则又变成量饱和长度');
 });
 
 test('N1-7. 锚定：燃料火焰不上浮漂走（坐标恒定在木料行）', function () {
@@ -909,42 +926,44 @@ test('V4. 金属锅：锅底加热 → 锅内水必须受热并烧开（用户�
     (boil > 0 ? boil + ' tick' : '未烧开'));
 });
 
-test('V5. 蒸汽不得"立刻变水滴"：接触成核（用户反馈④）', function () {
-  /* (a) 刚离开水面的**热蒸汽**（~90°C）在开阔空气中不该"立刻变水滴"：
-   *     仍走成核模型（缺冷核 → HOMO_F 折扣），大部分保持气态或升顶逸出。
-   *     v1.4.3 起"深度过冷"（<HOMO_FULL_T=50°C）的蒸汽不再打折、按全速率凝结 —— 见 (c)。 */
+test('V5. 蒸汽不得"立刻变水滴"，也不得长期悬浮：温度驱动的凝结（用户反馈④ + v1.5.1）', function () {
+  /* (a) 100 °C 蒸汽团在开阔空气中：既不"一秒变水滴"（羽流要时间上升），也不会长期悬浮 ——
+   *     前 30 tick 应剩一半以上，600 tick 内应基本消失。v1.5.1 起不再强制维持温度，
+   *     让物理自然演化（旧版强行每 tick 钉 90 °C 属非自然场景）。 */
   var e1 = Engine.create({ w: 60, h: 60, seed: 1337 }), g1 = e1.grid;
   fillBox(g1, 0, 55, 59, 59, E.STONE);
-  fillBox(g1, 25, 50, 34, 54, E.STEAM);
-  for (var a = 0; a < g1.n; a++) if (g1.element[a] === E.STEAM) { g1.temp[a] = 90; g1.nextTemp[a] = 90; }
-  var heatSteam = 0;
-  for (var t1 = 0; t1 < 400; t1++) {
+  fillBox(g1, 25, 45, 34, 50, E.STEAM);
+  for (var a1 = 0; a1 < g1.n; a1++) if (g1.element[a1] === E.STEAM) { g1.temp[a1] = 100; g1.nextTemp[a1] = 100; }
+  var n0 = count(g1, E.STEAM), at30 = -1;
+  for (var t1 = 0; t1 < 600; t1++) {
     e1.step();
-    for (var q1 = 0; q1 < g1.n; q1++) if (g1.element[q1] === E.STEAM) { g1.temp[q1] = 90; g1.nextTemp[q1] = 90; }
-    heatSteam = count(g1, E.STEAM);
+    if (t1 === 30) at30 = count(g1, E.STEAM);
   }
-  assert(count(g1, E.WATER) <= 12, '开阔空气中的热蒸汽 400 tick 内凝结成水应 ≤12 格，实得 ' +
-    count(g1, E.WATER) + '（v1.1 会在 1 秒内整片变成水滴砸下来）');
-  /* (b) 贴到冷壁面：应当迅速凝结成水珠（Powder Game 的 CLOUD 行为） */
+  assert(at30 >= n0 * 0.5, '开阔空气中的热蒸汽 30 tick 内应剩一半以上（羽流要有上升时间），实得 ' +
+    at30 + '/' + n0);
+  assert(count(g1, E.STEAM) <= 2, '600 tick 内应基本凝结（不再长期悬浮），实得 ' +
+    count(g1, E.STEAM) + ' 格');
+  /* (b) 贴到冷壁面：迅速凝结成水珠（Powder Game 的 CLOUD 行为，v1.2.0 接触成核保留） */
   var e2 = Engine.create({ w: 60, h: 60, seed: 1337 }), g2 = e2.grid;
   fillBox(g2, 0, 55, 59, 59, E.STONE);
-  fillBox(g2, 0, 8, 59, 9, E.STONE);            // 冷天花板
-  for (var b = 0; b < g2.n; b++) if (g2.element[b] === E.STONE) { g2.temp[b] = 20; g2.nextTemp[b] = 20; }
+  fillBox(g2, 0, 8, 59, 9, E.STONE);
+  for (var b1 = 0; b1 < g2.n; b1++) if (g2.element[b1] === E.STONE) { g2.temp[b1] = 20; g2.nextTemp[b1] = 20; }
   fillBox(g2, 25, 11, 34, 14, E.STEAM);
-  for (var c = 0; c < g2.n; c++) if (g2.element[c] === E.STEAM) { g2.temp[c] = 40; g2.nextTemp[c] = 40; }
+  for (var c1 = 0; c1 < g2.n; c1++) if (g2.element[c1] === E.STEAM) { g2.temp[c1] = 100; g2.nextTemp[c1] = 100; }
   for (var t2 = 0; t2 < 400; t2++) e2.step();
   assert(count(g2, E.WATER) >= 15, '贴冷壁的蒸汽 400 tick 内应凝结 ≥15 格水，实得 ' + count(g2, E.WATER));
-  /* (c) v1.4.3：深度过冷的蒸汽（20°C）必须凝结 —— 用户实测「一堆只有 20 度的水蒸气」长期悬浮 */
+  /* (c) 深度过冷的蒸汽（20 °C）：近饱和窗口之外无需凝结核即凝结 ——
+   *     这正是"不会有 20 度的水蒸气悬浮"的保证（旧模型以 0.2 折扣长期悬浮）。 */
   var e3 = Engine.create({ w: 60, h: 60, seed: 1337 }), g3 = e3.grid;
   fillBox(g3, 0, 55, 59, 59, E.STONE);
   fillBox(g3, 25, 40, 34, 44, E.STEAM);
-  for (var d = 0; d < g3.n; d++) if (g3.element[d] === E.STEAM) { g3.temp[d] = 20; g3.nextTemp[d] = 20; }
+  for (var d1 = 0; d1 < g3.n; d1++) if (g3.element[d1] === E.STEAM) { g3.temp[d1] = 20; g3.nextTemp[d1] = 20; }
   for (var t3 = 0; t3 < 400; t3++) {
     e3.step();
     for (var q3 = 0; q3 < g3.n; q3++) if (g3.element[q3] === E.STEAM) { g3.temp[q3] = 20; g3.nextTemp[q3] = 20; }
   }
-  assert(count(g3, E.STEAM) <= 10, '20°C 的过冷蒸汽 400 tick 内应基本凝结（残留 ≤10 格），实得 ' +
-    count(g3, E.STEAM) + ' 格（v1.4.2 会长期悬浮）');
+  assert(count(g3, E.STEAM) <= 10, '20 °C 的过冷蒸汽 400 tick 内应基本凝结（残留 ≤10 格），实得 ' +
+    count(g3, E.STEAM) + ' 格');
 });
 
 test('V6. 植物/树：有水就长成大树，且永不枯死（用户反馈⑤ + v1.4.3 树模型）', function () {
@@ -1331,6 +1350,81 @@ test('V23. ★种子长成"树"：木质树干 + 随机抽枝 + 树叶（原版�
   assert(hTree >= 8, '树高应 ≥8 格，实得 ' + hTree);
   assert(wTree >= 3, '树冠应有横向分叉（包围盒宽 ≥3），实得 ' + wTree);
   assert(count(g, E.DUST) === 0, '树不得枯死变灰尘，实得 DUST=' + count(g, E.DUST));
+});
+
+test('V24. ★蒸汽温度连贯：蒸汽恒 ≥100 °C、凝出的水是热的、不必从 20 °C 重新加热（v1.5.1）', function () {
+  /* 用户原话：「还有一堆只有 20 度的水蒸气 … 我要求你把它变为水蒸气是一百度以上的，
+   *          等冷到什么温度才会落下去，就是要水的温度是有连贯性的，
+   *          不然上去后马上又下来又要从 20 度再加温，这是有问题的。」
+   * 根因（_diag_steam.js 实测）：气-气导热走体积热容公式被钳到 CONDUCT_R_MAX=0.2，
+   * 等于"气体之间瞬间均温" → 单格 100 °C 蒸汽 1 tick 掉到 67.9 °C、10 tick 掉到 20 °C。
+   * 修法：①气体热惯性 GAS_GAS_R（气-气不再瞬间均温）；②凝结改温度驱动 + 潜热平台；
+   *      ③删除低于 100 °C 的表面蒸发路径（蒸汽只能由沸腾产生）。 */
+
+  /* (1) 蒸汽必须"热"：底部加热的水柱里，整个过程中不得出现 <60 °C 的蒸汽
+   *     （旧模型实测：600 tick 时 178 格蒸汽里有 159 格低于 40 °C）。 */
+  var eng = Engine.create({ w: 40, h: 90, seed: 1337 }), g = eng.grid;
+  fillBox(g, 0, 86, 39, 89, E.STONE);
+  fillBox(g, 12, 60, 27, 85, E.WATER);
+  fillBox(g, 14, 84, 25, 85, E.EMBER);                  // 底部热源
+  var worstCold = 0, seenSteam = 0, maxSteamT = 0;
+  for (var t = 1; t <= 900; t++) {
+    eng.step();
+    if (t % 10 === 0) {
+      var cold = 0;
+      for (var i = 0; i < g.n; i++) if (g.element[i] === E.STEAM) {
+        seenSteam++;
+        if (g.temp[i] > maxSteamT) maxSteamT = g.temp[i];
+        if (g.temp[i] < 60) cold++;
+      }
+      if (cold > worstCold) worstCold = cold;
+    }
+  }
+  assert(seenSteam > 200, '本场景应产生可观蒸汽（实得采样累计 ' + seenSteam + ' 格次）');
+  assert(worstCold === 0, '不得出现 <60 °C 的蒸汽（"一堆只有 20 度的水蒸气"），实得最多 ' + worstCold + ' 格');
+  assert(maxSteamT >= 150, '蒸汽应能显著过热（≥150 °C，显热没有被空气瞬间抽走），实得 ' + maxSteamT.toFixed(0) + ' °C');
+
+  /* (2) 温度连贯：蒸汽凝结出来的水必须是**热的**（潜热平台把温度钉在饱和温度附近） */
+  var e2 = Engine.create({ w: 60, h: 60, seed: 1337 }), g2 = e2.grid;
+  fillBox(g2, 0, 55, 59, 59, E.STONE);
+  fillBox(g2, 25, 45, 34, 50, E.STEAM);
+  for (var k = 0; k < g2.n; k++) if (g2.element[k] === E.STEAM) { g2.temp[k] = 100; g2.nextTemp[k] = 100; }
+  var firstWaterT = -1;
+  for (var t2 = 1; t2 <= 400; t2++) {
+    e2.step();
+    if (firstWaterT < 0) {
+      for (var m = 0; m < g2.n; m++) if (g2.element[m] === E.WATER) { firstWaterT = g2.temp[m]; break; }
+    }
+  }
+  assert(firstWaterT >= 80, '初次凝结出的水应 ≈ 饱和温度（≥80 °C，温度连贯），实得 ' +
+    (firstWaterT < 0 ? '无水' : firstWaterT.toFixed(1) + ' °C'));
+
+  /* (3) 生成端：低于 100 °C 的水不得产生蒸汽；≥100 °C 才产，且产物温度 ≥100 °C */
+  var e3 = Engine.create({ w: 40, h: 40, seed: 1337 }), g3 = e3.grid;
+  fillBox(g3, 0, 36, 39, 39, E.STONE);
+  fillBox(g3, 10, 30, 29, 35, E.WATER);
+  for (var w1 = 0; w1 < g3.n; w1++) if (g3.element[w1] === E.WATER) { g3.temp[w1] = 90; g3.nextTemp[w1] = 90; }
+  for (var t3 = 0; t3 < 300; t3++) {
+    e3.step();
+    for (var q = 0; q < g3.n; q++) if (g3.element[q] === E.WATER) { g3.temp[q] = 90; g3.nextTemp[q] = 90; }
+  }
+  assert(count(g3, E.STEAM) === 0, '90 °C 的水不得产生蒸汽（表面蒸发路径已删除），实得 ' +
+    count(g3, E.STEAM) + ' 格');
+  var e4 = Engine.create({ w: 40, h: 40, seed: 1337 }), g4 = e4.grid;
+  fillBox(g4, 0, 36, 39, 39, E.STONE);
+  fillBox(g4, 10, 30, 29, 35, E.WATER);
+  for (var w2 = 0; w2 < g4.n; w2++) if (g4.element[w2] === E.WATER) { g4.temp[w2] = 120; g4.nextTemp[w2] = 120; }
+  var minNewSteamT = 1e9;
+  for (var t4 = 0; t4 < 60; t4++) {
+    e4.step();
+    for (var q2 = 0; q2 < g4.n; q2++) if (g4.element[q2] === E.STEAM && g4.temp[q2] < minNewSteamT) minNewSteamT = g4.temp[q2];
+    for (var q3 = 0; q3 < g4.n; q3++) if (g4.element[q3] === E.WATER) { g4.temp[q3] = 120; g4.nextTemp[q3] = 120; }
+  }
+  assert(count(g4, E.STEAM) > 0, '120 °C 的水应产生蒸汽');
+  /* 公差说明：engine.step 的顺序是 transitions → relax → commitTemp，沸腾刚写下的 100.0 °C
+   * 会被随后的一次环境弛豫拉走 0.0006×80 ≈ 0.05 °C，故读数约 99.9 °C。
+   * 断言取 ≥99.5（本质是"≥100 °C"，容一个 tick 的弛豫）；旧模型同期读数是 20–70 °C。 */
+  assert(minNewSteamT >= 99.5, '沸腾产生的蒸汽温度必须 ≥100 °C（容 1 tick 弛豫），实得最低 ' + minNewSteamT.toFixed(1) + ' °C');
 });
 
 /* ============================================================
