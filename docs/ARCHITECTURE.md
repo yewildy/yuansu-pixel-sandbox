@@ -63,10 +63,11 @@
 - `air.js`（v1.1 新增）只读 `Balance.AIR` / `Elements` / `Grid.swap`，与通用移动通道解耦（AIR `movable=false`）；它被 `thermal.js` 通过 `noteDeviation()` 单向驱动，故加载顺序在 `thermal` 之前（见下）。
 
 ### 加载顺序
-`balance → rng → elements → grid → thermal → transitions → reactions → movement → air → biology → wind → engine → palette → renderer → i18n → locales(zh-CN,en,ja) → toolbar → save → help → main`
+`balance → rng → elements → grid → thermal → transitions → reactions → movement → air → biology → wind → pressure → engine → palette → renderer → i18n → locales(zh-CN,en,ja) → toolbar → save → help → main`
 
 > `movement.js` 在运行时通过 `root.YS.Wind` 惰性访问对流加成，故 `wind` 只需在首次 tick 前加载（engine 之前即可）。
 > `air.js` 须在 `thermal.js` **之后**、`engine.js` **之前**加载：`(1)` engine 直接调用 `Air.airPass`；`(2)` thermal 的 `relax` 通过 `Air.noteDeviation()` 置 `pendingDrive` 标志——即「谁驱动空气」的调用发生在 thermal 内，故 air 必须先就位（实际上 engine.step 里 airPass 在 thermal 之前执行，标志在上一 tick 的 relax 阶段已置好）。
+> `pressure.js`（v1.6.1）须在 `elements.js` **之后**、`engine.js` **之前**加载：加载时按 `Elements` 建"气体/墙体/韧性/免疫"分类表；engine 直接调用 `Pressure.pressurePass`。`reactions.js::explosionPass` 通过 `root.YS.Pressure` **惰性**调用 `impulse`，故不要求 pressure 早于 reactions 加载。
 
 ---
 
@@ -99,6 +100,7 @@ Structure-of-Arrays，全部为预分配类型化数组（`320×180 = 57,600` �
 tickId = ++tick
 1  Movement.movePass      §5    粉末/液体/气体移动（气体含风平流；自下而上 + 左右逐帧交替）
 2  Air.airPass            §5.4  AIR 专用对流/浮力/风（隔帧执行；温度驱动置换；见 ADR-0005）
+2b Pressure.pressurePass  §14.7 压强系统（v1.6.1：压差驱动气流 + 墙体应力/变形；defer PR版见 PRESSURE-MODEL.md）
 3  Reactions.reactionPass §8    爆炸→灭火→燃烧→腐蚀→溶解→克隆/病毒/水源泉（§15.4 优先级；含 §9.2 蔓延 + §9.6 耗氧、R19 出水）
 4  Biology.lifePass       §10   严格生态：种子发芽 / 植物生长 / 枯萎 / 病毒（PLANT-MODEL）
 5  Thermal.diffuse        §6.1  导热（**双轨配对系数**）→ 写入 nextTemp
@@ -109,6 +111,10 @@ tickId = ++tick
 9  agePass                §4.3  寿命 / decayTo（FIRE/SMOKE/STEAM）+ §9.2 燃料寿命/§9.3 残灰（缺氧窒息不造氧）
 10 Wind.windPass          §11   轻质粉末空中漂移（+ 对流已在 movePass 内叠加）
 ```
+
+> **v1.6.1 新增 `2b pressurePass`**（`docs/PRESSURE-MODEL.md`）：接在 `airPass` 之后、`reactionPass` 之前 ——
+> 压差驱动的气体流动与空气对流同属"气体搬运"，且必须尊重 `airPass` 已置的 `moveStamp`（同 tick 不重复移动）；
+> 墙体应力/变形也在此步累积。爆炸冲压在 `reactionPass::explosionPass` 内惰性调用 `Pressure.impulse`。
 
 **与 §1.2 的三处实现级差异**（等价或更优，见 ADR-0003 / ADR-0005）：
 1. 原第 1 步 `clearFlags()` 与第 8 步 `swap temp↔nextTemp`：改为 `moveStamp/reactStamp`（递增 tickId）+ `commitTemp()` 回写。效果等价，省去每帧 57,600 次清零 / 交换。

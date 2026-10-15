@@ -7,7 +7,7 @@
 /* ---------- 加载 core（classic wrapper 会在 Node 下填充 globalThis.YS） ---------- */
 var path = require('path');
 var CORE = ['balance', 'rng', 'elements', 'grid', 'thermal', 'transitions',
-  'reactions', 'movement', 'air', 'biology', 'wind', 'engine'];
+  'reactions', 'movement', 'air', 'biology', 'wind', 'pressure', 'engine'];
 CORE.forEach(function (m) { require(path.join(__dirname, '..', 'src', 'core', m + '.js')); });
 require(path.join(__dirname, '..', 'src', 'render', 'palette.js'));
 require(path.join(__dirname, '..', 'src', 'ui', 'i18n.js'));
@@ -335,7 +335,11 @@ test('8b. balance 键名与 §14 一致（抽样）', function () {
   assert(B.PHYS.GAS_CONTACT_K === 0.08 && B.PHYS.GAS_FLUX_MIN_T === 100,
     '热气体对流传热常数（v1.4.3：0.05→0.08）');
   assert(B.PLANT.GROW_P === 0.08 && B.PLANT.VINE_P === 0.03, 'PLANT 生长参数（v1.4.0：GROW_P 加速 + VINE_P 横生）');
+  /* v1.6.1：水源泉/克隆体由「累计配额 MAX_CELLS」改为「持续产出 + 活体上限 LIVE_MAX」 */
   assert(B.CLONE.COPY_INTERVAL === 4 && B.SPRING.EMIT_INTERVAL === 6, '流量参数');
+  assert(B.CLONE.LIVE_MAX === 5000 && B.SPRING.LIVE_MAX === 6000, '活体上限（v1.6.1）');
+  assert(B.CLONE.MAX_CELLS === undefined && B.SPRING.MAX_CELLS === undefined,
+    'MAX_CELLS 累计配额应已删除（v1.6.1 改为 LIVE_MAX）');
 });
 
 test('8c. 三语字典覆盖全部元素名', function () {
@@ -550,14 +554,44 @@ test('12a. 水源泉 SPRING：600 tick 内产出 WATER > 0（R19，质量创生�
   assert(eng.springCreated > 0, 'springCreated 计数应 > 0，实得 ' + eng.springCreated);
 });
 
-test('12b. 水源泉配额：累计产水受 SPRING.MAX_CELLS=1500 限制并停喷', function () {
-  var eng = Engine.create({ w: 120, h: 60, seed: 1337 }), g = eng.grid;
-  for (var x = 0; x < 120; x++) g.setEl(x, 30, E.SPRING);
-  for (var t = 0; t < 6000; t++) eng.step();
-  var cap = YS.Balance.SPRING.MAX_CELLS;
-  assert(eng.springCreated <= cap, '累计产水越过配额：' + eng.springCreated + ' > ' + cap);
-  assert(eng.springCreated >= cap * 0.9, '充足场地下应接近配额，实得 ' + eng.springCreated);
-  assert(count(g, E.WATER) <= cap, 'WATER 格数不应超过配额');
+test('12b. 水源泉活体上限：世界满水时暂停、排空后自动恢复（非永久停喷，v1.6.1）', function () {
+  /* v1.6.1 语义变更（docs/SPRING-MODEL.md）：旧模型是「全局累计配额 MAX_CELLS=1500，
+   * 产满即永久停喷」（把"持续水源"退化成"一次性定量水源"，用户实测「只会给一会儿水」）；
+   * 新模型改为「持续产出 + 活体上限 LIVE_MAX」——世界里 WATER 达上限时暂停，降回后自动恢复。
+   * 本测试直接构造「世界已满水」的初态（比自然灌满快得多），验证：
+   *   ① springCreated 单调不减（累计统计保留）；
+   *   ② WATER 格数全程 ≤ LIVE_MAX；
+   *   ③ 满水时水源泉暂停、排掉一部分水后**自动恢复**产出（这正是旧模型做不到的）。 */
+  var LIVE = YS.Balance.SPRING.LIVE_MAX;
+  assert(LIVE === 6000, 'SPRING.LIVE_MAX 应为 6000（实测标定，见 docs/SPRING-MODEL.md）');
+  var eng = Engine.create({ w: 120, h: 80, seed: 1337 }), g = eng.grid;
+  /* 预填 LIVE_MAX 格水（50 行 × 120 列 = 6000） */
+  var filled = 0;
+  for (var y = 30; y < 80; y++) for (var x = 0; x < 120; x++) { g.setEl(x, y, E.WATER); filled++; }
+  assert(filled === LIVE && count(g, E.WATER) === LIVE, '预填水应为 LIVE_MAX 格');
+  g.setEl(60, 2, E.SPRING);
+  var mono = true, prev = 0, capped = true;
+  for (var t = 1; t <= 70; t++) {
+    eng.step();
+    if (eng.springCreated < prev) mono = false;
+    prev = eng.springCreated;
+    if (count(g, E.WATER) > LIVE) capped = false;
+  }
+  assert(mono, 'springCreated 应单调不减');
+  assert(capped, 'WATER 格数不应超过 LIVE_MAX');
+  assert(eng.springCreated === 0, '满水时水源泉应暂停（springCreated 应为 0），实得 ' + eng.springCreated);
+  /* 排掉 300 格水 → 应自动恢复产出（旧模型下会永久停喷） */
+  var removed = 0;
+  for (var y2 = 30; y2 < 80 && removed < 300; y2++) for (var x2 = 0; x2 < 120 && removed < 300; x2++) {
+    var ii = g.idx(x2, y2);
+    if (g.element[ii] === E.WATER) { g.element[ii] = 1; g.temp[ii] = 20; removed++; }
+  }
+  assert(removed === 300, '应移除 300 格水，实得 ' + removed);
+  var before = eng.springCreated;
+  for (var t2 = 0; t2 < 300; t2++) eng.step();
+  assert(eng.springCreated > before, '排空后水源泉应自动恢复产出（非永久停喷），实得 +' +
+    (eng.springCreated - before));
+  assert(count(g, E.WATER) <= LIVE, '恢复产出后 WATER 仍不应超过 LIVE_MAX，实得 ' + count(g, E.WATER));
 });
 
 test('13. 高温蒸汽（300°C）700 tick 不得冷凝为水（§7.2 T≥100 恒不冷凝）', function () {
@@ -1512,8 +1546,234 @@ test('V25. ★热交换闭环：蒸汽加热空气 → 凝结高度抬升 → �
 });
 
 /* ============================================================
+   V26 — v1.6.1：水源泉「持续产出 + 活体上限」长跑（Phase 1）
+   ============================================================ */
+test('V26. ★水源泉长跑 20000 tick：持久出水不永久停 + WATER ≤ LIVE_MAX（v1.6.1）', function () {
+  /* 用户原话：「水源泉等方块，只会给一会儿水，根本不持久。」
+   * 旧模型：累计配额 1500 格 → 单水源泉约 9000 tick（1500 × EMIT_INTERVAL=6）就产满、
+   * 之后**永久停喷**，窗口 4/5 产出为 0。新模型（活体上限 LIVE_MAX=6000）下，
+   * 只要未达上限就持续产出 —— 单水源泉 20000 tick 累计约 3333 格（< 6000，不触发上限），
+   * 因此每个窗口都应有产出。
+   *
+   * 实测（64×64、单水源泉、本机 Node）：20000 tick 用时约 **11.4 s**；
+   * 分窗口产出（每 4000 tick）= 666 / 667 / 667 / 666 / 667；末态 WATER=3333（≤ LIVE_MAX）。
+   * 画布尺寸取 64×64=4096 格：足够容纳峰值 3333 格水而不淹没水源泉（池面 y≈12，泉在 y=1）。 */
+  var eng = Engine.create({ w: 64, h: 64, seed: 1337 }), g = eng.grid;
+  g.setEl(32, 1, E.SPRING);                       // 顶部单水源泉，水自然下落汇聚在底部
+  var windows = [], last = 0;
+  for (var t = 1; t <= 20000; t++) {
+    eng.step();
+    if (t % 4000 === 0) { windows.push(eng.springCreated - last); last = eng.springCreated; }
+  }
+  assert(windows.length === 5, '应有 5 个统计窗口，实得 ' + windows.length);
+  assert(windows[3] > 0 && windows[4] > 0,
+    '第 4/5 个窗口仍应有产出（不永久停喷），实得 [' + windows.join(', ') + ']');
+  assert(count(g, E.WATER) <= YS.Balance.SPRING.LIVE_MAX,
+    'WATER 不应超过 LIVE_MAX，实得 ' + count(g, E.WATER));
+  assert(eng.springCreated >= 3000, '20000 tick 累计产出应达数千格，实得 ' + eng.springCreated);
+});
+
+/* ============================================================
+   V27 — v1.6.1：气流可视化 flowDir（Phase 2，原设计 C5）
+   ============================================================ */
+test('V27. ★气流可视化：flowDir 记录气体位移方向 / 会过期 / 液体粉末不写（v1.6.1）', function () {
+  /* 复刻渲染器的 showFlow 判据：flowDir≠0 且 (tickId - moveStamp) ≤ 10 且该格为气体（含 AIR）。
+   * 位标 1=E 2=W 4=N 8=S。三条断言对应任务书 V27 的 ①②③。 */
+  var ELS = El.ELEMENTS;
+  var FRESH = 10;
+  function freshFlow(g) {
+    var c = 0;
+    for (var i = 0; i < g.n; i++) {
+      if (g.flowDir[i] !== 0 && (g.tickId - g.moveStamp[i]) <= FRESH && ELS[g.element[i]].state === 'gas') c++;
+    }
+    return c;
+  }
+  function anyFlow(g) {
+    var c = 0;
+    for (var i = 0; i < g.n; i++) if (g.flowDir[i] !== 0) c++;
+    return c;
+  }
+
+  /* ① 热源上方空气上升 → 该区域出现 flowDir 位标（≥20 格） */
+  var e1 = Engine.create({ w: 64, h: 64, seed: 1337 }), g1 = e1.grid;
+  for (var x = 28; x < 36; x++) g1.setEl(x, 50, E.EMBER);      // 一排永燃火种加热底部空气
+  for (var t = 0; t < 80; t++) e1.step();
+  var above = 0;
+  for (var y = 0; y < 50; y++) for (var x2 = 0; x2 < 64; x2++) {
+    if (g1.flowDir[g1.idx(x2, y)] !== 0) above++;
+  }
+  assert(above >= 20, '热源上方应出现 ≥20 格 flowDir 位标，实得 ' + above);
+  assert(freshFlow(g1) > 0, '应存在"新鲜"气流位标（tickId - moveStamp ≤ 10）');
+
+  /* ② 位标会"过期"：撤去热源 + 全场复位环境温 → 空气停止运动，30 tick 后无"新鲜"位标可渲染 */
+  var e2 = Engine.create({ w: 48, h: 48, seed: 1337 }), g2 = e2.grid;
+  for (var x3 = 20; x3 < 28; x3++) g2.setEl(x3, 40, E.EMBER);
+  for (var t2 = 0; t2 < 60; t2++) e2.step();
+  var fActive = freshFlow(g2);
+  for (var i = 0; i < g2.n; i++) { g2.element[i] = 1; g2.temp[i] = 20; g2.nextTemp[i] = 20; g2.latent[i] = 0; }
+  for (var t3 = 0; t3 < 30; t3++) e2.step();
+  assert(fActive > 0, '热源活动期应存在新鲜位标，实得 ' + fActive);
+  assert(freshFlow(g2) === 0, '30 tick 前的位标不应再被渲染计数（过期），实得 ' + freshFlow(g2));
+
+  /* ③ 液体/粉末移动不写 flowDir（水柱下落反例） */
+  var e3 = Engine.create({ w: 40, h: 40, seed: 1337 }), g3 = e3.grid;
+  for (var x4 = 0; x4 < 40; x4++) for (var y2 = 38; y2 < 40; y2++) g3.setEl(x4, y2, E.WALL);
+  for (var y3 = 5; y3 <= 15; y3++) g3.setEl(20, y3, E.WATER);   // 一柱水自由下落
+  var top0 = 5;
+  for (var t4 = 0; t4 < 30; t4++) e3.step();
+  var top1 = -1;
+  for (var y4 = 0; y4 < 40; y4++) if (g3.element[g3.idx(20, y4)] === E.WATER) { top1 = y4; break; }
+  assert(top1 > top0, '水柱应确实下落（否则反例为空），顶格 y ' + top0 + ' → ' + top1);
+  assert(anyFlow(g3) === 0, '液体/粉末移动不得写 flowDir（仅气体写），实得 ' + anyFlow(g3));
+});
+
+/* ============================================================
+   V28–V31 — v1.6.1：压强系统（Phase 3，docs/PRESSURE-MODEL.md）
+   ============================================================ */
+
+/* 共享：构造 80×80 石地板 + 1 格厚矩形盒（x 25-55 / y 30-50，内部 AIR） */
+function p3Box(g, mat, withHeat) {
+  for (var x = 0; x < g.w; x++) for (var y = 78; y < 80; y++) g.setEl(x, y, E.STONE);
+  for (var a = 25; a <= 55; a++) { g.setEl(a, 30, mat); g.setEl(a, 50, mat); }
+  for (var b = 30; b <= 50; b++) { g.setEl(25, b, mat); g.setEl(55, b, mat); }
+  if (withHeat) { g.setEl(30, 49, E.EMBER); g.setEl(40, 49, E.EMBER); g.setEl(50, 49, E.EMBER); }
+}
+function p3BBox(g, id) {
+  var mnx = 1e9, mxx = -1, mny = 1e9, mxy = -1, c = 0;
+  for (var i = 0; i < g.n; i++) if (g.element[i] === id) {
+    c++; var x = i % g.w, y = (i / g.w) | 0;
+    if (x < mnx) mnx = x; if (x > mxx) mxx = x; if (y < mny) mny = y; if (y > mxy) mxy = y;
+  }
+  return { c: c, w: mxx - mnx + 1, h: mxy - mny + 1, minx: mnx, maxx: mxx, miny: mny, maxy: mxy };
+}
+/* 跑 N tick，返回首次"某格从 id 变为非 id"（= 屈服事件）的 {t,x,y} */
+function p3RunYield(mat, withHeat, ticks) {
+  var eng = Engine.create({ w: 80, h: 80, seed: 1337 }), g = eng.grid;
+  p3Box(g, mat, withHeat);
+  var b0 = p3BBox(g, mat), first = null, prev = new Uint8Array(g.n);
+  for (var i = 0; i < g.n; i++) prev[i] = g.element[i];
+  for (var t = 1; t <= ticks; t++) {
+    eng.step();
+    if (!first) {
+      for (var q = 0; q < g.n; q++) if (prev[q] === mat && g.element[q] !== mat) {
+        first = { t: t, x: q % g.w, y: (q / g.w) | 0 }; break;
+      }
+    }
+    for (var q2 = 0; q2 < g.n; q2++) prev[q2] = g.element[q2];
+  }
+  return { b0: b0, b1: p3BBox(g, mat), first: first };
+}
+
+test('V28. ★压强系统：金属盒受压「慢慢」变形（角部先屈服）+ 无热源对照不变（v1.6.1）', function () {
+  /* 用户诉求：「金属绕一个圈，圈内圈外压强不一样 → 慢慢变形成圆形（现实里先在某个地方突出或破掉）」。
+   * 机制：盒内 EMBER 加热 → 内压升高 → 金属墙（韧性）向低压侧蠕动 → 外框外扩。
+   * 实测：首格（角部）屈服 t≈1648；4000 tick 内金属外框 w 31→33、h 21→24。
+   * 注：任务书希望"角部格先于边墙中部屈服"—— 本模型通过 CORNER_K 应力集中系数实现该点
+   * （直角处应力集中，压力容器倒圆角正是此理），首格屈服落在盒角。 */
+  var r = p3RunYield(E.METAL, true, 4000);
+  assert(r.first, '4000 tick 内金属盒应出现屈服（变形），实得无');
+  assert(r.first.t >= 800 && r.first.t <= 4000,
+    '变形应"慢慢"发生（首格屈服 t 在 800–4000 间），实得 t=' + r.first.t);
+  assert(r.b1.w >= r.b0.w + 2 || r.b1.h >= r.b0.h + 2,
+    '金属外框宽或高应增大 ≥2 格，实得 w ' + r.b0.w + '→' + r.b1.w + ' h ' + r.b0.h + '→' + r.b1.h);
+  var corners = [[25, 30], [55, 30], [25, 50], [55, 50]];
+  var isCorner = corners.some(function (c) {
+    return Math.abs(c[0] - r.first.x) <= 1 && Math.abs(c[1] - r.first.y) <= 1;
+  });
+  assert(isCorner, '首格屈服应发生在盒角附近（角部先于边墙中部），实得 (' +
+    r.first.x + ',' + r.first.y + ') @t' + r.first.t);
+  /* 对照组：同盒无热源 → 4000 tick 不变形、无屈服 */
+  var c = p3RunYield(E.METAL, false, 4000);
+  assert(!c.first, '无热源时金属盒不应屈服，实得 (' + (c.first && c.first.x + ',' + c.first.y) + ')');
+  assert(c.b1.w === c.b0.w && c.b1.h === c.b0.h, '无热源时金属外框尺寸不应变化');
+});
+
+test('V29. ★爆炸冲击波：冲压注入 + 向外的气流（v1.6.1）', function () {
+  /* TNT 引爆 → explosionPass 向冲击波半径（TNT.RADIUS×2.5=25）内的气体格注入冲压；
+   * 60 tick 后：距爆心 12–25 格内应有 ≥10 个 press>0.05 的气体格，且 ≥10 格向外气流标记；
+   * 对照（无 TNT）→ 全场 press≈0、无向外气流。 */
+  var ELS = El.ELEMENTS;
+  function run(withTNT) {
+    var eng = Engine.create({ w: 120, h: 80, seed: 1337 }), g = eng.grid;
+    for (var x = 0; x < g.w; x++) for (var y = 76; y < 80; y++) g.setEl(x, y, E.STONE);
+    var cx = 60, cy = 72;
+    if (withTNT) { g.setEl(cx, cy, E.TNT); g.temp[g.idx(cx, cy)] = 600; }
+    for (var t = 1; t <= 60; t++) eng.step();
+    var press = 0, out = 0, maxP = 0;
+    for (var y = 0; y < g.h; y++) for (var x2 = 0; x2 < g.w; x2++) {
+      var i = g.idx(x2, y);
+      if (g.press[i] > maxP) maxP = g.press[i];
+      var dx = x2 - cx, dy = y - cy, d = Math.sqrt(dx * dx + dy * dy);
+      if (d < 12 || d > 25) continue;
+      var e = g.element[i];
+      if (!(ELS[e] && ELS[e].state === 'gas')) continue;
+      if (g.press[i] > 0.05) press++;
+      var f = g.flowDir[i];
+      if (!f) continue;
+      if (Math.abs(dx) > Math.abs(dy)) { if (dx > 0 && (f & 1)) out++; else if (dx < 0 && (f & 2)) out++; }
+      else { if (dy > 0 && (f & 8)) out++; else if (dy < 0 && (f & 4)) out++; }
+    }
+    return { press: press, out: out, maxP: maxP };
+  }
+  var a = run(true);
+  assert(a.press >= 10, '距爆心 12–25 内应有 ≥10 个 press>0.05 的气体格，实得 ' + a.press);
+  assert(a.out >= 10, '距爆心 12–25 内应有 ≥10 格向外气流标记，实得 ' + a.out);
+  var b = run(false);
+  assert(b.maxP === 0, '无 TNT 时全场 press 应为 0，实得 max=' + b.maxP);
+  assert(b.out === 0, '无 TNT 时不应有向外气流标记，实得 ' + b.out);
+});
+
+test('V30. ★压差驱动流动（联动）：盒内顶部缺口出现水平（E/W）气流（v1.6.1）', function () {
+  /* 用户诉求：「空气流动也可以做成因为压强的变化所以才变化，就是联动」。
+   * 场景：密闭盒（WALL）内一道竖墙把左右隔开、**顶部留缺口**，左侧 EMBER 加热、右侧环境温。
+   * 热空气在左侧升到顶、被天花板挡住（无法靠浮力逃逸）→ 压力积累 → 从缺口挤到右侧。
+   * 判据①：缺口区出现 E/W 向 flowDir 标记 ≥20 格次/600 tick（任务书 V30 原始判据）；
+   * 判据②：其中**纯水平**（只有 E/W 位、无 N/S 位）的 AIR 格 ≥20 格次 —— 这是干净证据：
+   *         AIR 不参与 movePass 的水平扩散，纯水平位移只可能来自压强步（压强关掉则恒为 0）。 */
+  var ELS = El.ELEMENTS;
+  function run(pressureOn) {
+    YS.Balance.PRESSURE.ENABLE = pressureOn;
+    var eng = Engine.create({ w: 70, h: 60, seed: 1337 }), g = eng.grid;
+    function W(x, y) { g.setEl(x, y, E.WALL); }
+    for (var x = 8; x <= 61; x++) { W(x, 8); W(x, 56); }
+    for (var y = 8; y <= 56; y++) { W(8, y); W(61, y); }
+    for (var y2 = 20; y2 <= 55; y2++) W(35, y2);          // 竖墙（顶部 y=9..19 为缺口）
+    for (var x2 = 15; x2 <= 25; x2++) for (var y3 = 54; y3 <= 55; y3++) g.setEl(x2, y3, E.EMBER);
+    var ewMarks = 0, horizOnly = 0;
+    for (var t = 1; t <= 600; t++) {
+      eng.step();
+      for (var yy = 9; yy <= 19; yy++) for (var xx = 10; xx <= 59; xx++) {
+        var i = g.idx(xx, yy);
+        if (!g.flowDir[i]) continue;
+        if (g.tickId - g.moveStamp[i] > 10) continue;
+        var e = g.element[i];
+        if (!(ELS[e] && ELS[e].state === 'gas')) continue;
+        if (g.flowDir[i] & 3) {                                // 含 E 或 W 位
+          ewMarks++;
+          if (e === 1 && (g.flowDir[i] & 12) === 0) horizOnly++;   // 纯水平 AIR 位移
+        }
+      }
+    }
+    return { ew: ewMarks, horiz: horizOnly };
+  }
+  var on = run(true);
+  assert(on.ew >= 20, '缺口区应有 ≥20 格次 E/W 气流标记，实得 ' + on.ew);
+  assert(on.horiz >= 20, '缺口区应有 ≥20 格次"纯水平 AIR"位移（压强驱动证据），实得 ' + on.horiz);
+  var off = run(false);
+  YS.Balance.PRESSURE.ENABLE = true;                            // 还原全局开关
+  assert(off.horiz === 0, '关闭压强系统后不应出现纯水平 AIR 位移，实得 ' + off.horiz);
+});
+
+test('V31. 压强系统：WALL（墙）免疫变形（v1.6.1）', function () {
+  var r = p3RunYield(E.WALL, true, 4000);
+  assert(!r.first, 'WALL 不应屈服，实得 (' + (r.first && r.first.x + ',' + r.first.y) + ')');
+  assert(r.b1.c === r.b0.c, 'WALL 格数不应变化（' + r.b0.c + '→' + r.b1.c + '）');
+  assert(r.b1.w === r.b0.w && r.b1.h === r.b0.h, 'WALL 外框尺寸不应变化');
+});
+
+/* ============================================================
   输出
-  ============================================================ */
+   ============================================================ */
 console.log('\nYuansu Pixel Sandbox — 单元测试\n' + '='.repeat(48));
 console.log(lines.join('\n'));
 console.log('='.repeat(48));

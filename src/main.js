@@ -16,7 +16,7 @@
 
   /* v1.4.1 游戏内版本标识（用户：「在推送游戏内标上版本以及最后修改时间，这样我才知道我玩的是哪一版」）
    * 每次发布前手动同步此处 + index.html 的 ?v= 缓存破坏参数。 */
-  var VERSION = { v: 'v1.6.0', built: '2026-10-15' };
+  var VERSION = { v: 'v1.6.1', built: '2026-10-15' };
   YS.VERSION = VERSION;
 
   function initialTemp(id) {
@@ -48,6 +48,7 @@
       windAngle: 0,
       windStrength: 0,
       showHeat: false,
+      showFlow: true,          // v1.6.1 气流可视化（默认开，按 V 或设置面板切换）
       showGrid: false,
       highContrast: false,
       reducedMotion: false,
@@ -198,6 +199,12 @@
       if (e.key === '.') { e.preventDefault(); if (state.paused) engine.step(); return; }
       if (e.key === '[') { app.fn.setRadius(state.radius - 1); return; }
       if (e.key === ']') { app.fn.setRadius(state.radius + 1); return; }
+      /* v1.6.1 气流可视化开关（V 键；不劫持 Ctrl/Cmd+V 粘贴）：与设置面板「气流显示」同源 */
+      if ((e.key === 'v' || e.key === 'V') && !e.ctrlKey && !e.metaKey) {
+        app.fn.toggleSetting('showFlow', !state.showFlow);
+        YS.Toolbar.refreshControls(app);
+        return;
+      }
       if (e.key >= '1' && e.key <= '9') { app.fn.selectElement(QUICK[+e.key - 1]); return; }
       if (e.ctrlKey || e.metaKey) {
         if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); engine.clear(); }
@@ -242,6 +249,7 @@
         animTime: animT,
         highContrast: state.highContrast,
         showHeat: state.showHeat,
+        showFlow: state.showFlow,
         glow: state.glow
       });
       if (hover.x >= 0) {

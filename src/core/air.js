@@ -32,6 +32,7 @@
     grid.swap(i, j);              // 同时交换 element/temp/age/latent → 热量随空气一起搬走
     grid.moveStamp[i] = tick;
     grid.moveStamp[j] = tick;
+    grid.markFlow(i, j);          // v1.6.1 气流可视化：记下这次空气置换的方向（i↔j 两格）
   }
 
   function airPass(grid, ctx) {

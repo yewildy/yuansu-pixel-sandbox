@@ -303,9 +303,96 @@
 
   var SOIL = { MOISTURE_MAX: 400, MOISTURE_GAIN: 6, DRY_RATE: 0.25 };
   var VIRUS = { INFECT_PLANT_P: 0.05, INFECT_SEED_P: 0.03 };
-  var CLONE = { COPY_INTERVAL: 4, MAX_CELLS: 2000 };
-  var SPRING = { EMIT_INTERVAL: 6, MAX_CELLS: 1500 };
+  /* v1.6.1 ★水源泉 / 克隆体「持续产出 + 活体上限」（docs/SPRING-MODEL.md）
+   *
+   * 用户实测：「还有水源泉等方块，只会给一会儿水，根本不持久。」
+   * 根因：旧模型用**全局累计配额** MAX_CELLS（SPRING 1500 / CLONE 2000）—— 累计产满即
+   * **永久停喷**，于是"持续水源"退化成"一次性定量水源"。
+   *
+   * 新模型：**只要 SPRING/CLONE 自身还在场，就按 EMIT_INTERVAL / COPY_INTERVAL 持续产出**，
+   * 仅受"活体上限" LIVE_MAX 节流 —— 世界里该产物的格数达到 LIVE_MAX 时**暂停**产出，
+   * 降回阈值以下**自动恢复**（关键：不是永久停）。统计用低频节流（每 30 tick 扫一次并缓存，
+   * 见 reactions.js::refreshLiveCounts），避免每 tick 全网格扫描。
+   *
+   * LIVE_MAX 量级依据：画布 320×180 = 57600 格。水到 6000 时已相当满（约占 10% 面积），
+   * 实测 95% 填充下的 tick 成本仍在预算内（见 docs/SPRING-MODEL.md 实测）；
+   * CLONE 的"产物"是任意可移动元素，无法廉价追踪产物来源，故用**全体可移动（非 AIR）格数**
+   * 作为活体计数的保守上界（宁可早停也不让世界被灌满）。 */
+  var CLONE = { COPY_INTERVAL: 4, LIVE_MAX: 5000 };
+  var SPRING = { EMIT_INTERVAL: 6, LIVE_MAX: 6000 };
   var WIND = { MAX_STRENGTH: 1.0, CONVECT_T_BOOST: 0.3, CONVECT_T_THRESH: 200 };
+
+  /* §14.7 压强系统（v1.6.1，Phase 3；docs/PRESSURE-MODEL.md 为真源）
+   *
+   * 用户诉求：「金属绕一个圈，圈内圈外压强不一样 → 会**慢慢**变形成圆形（现实里先在某处
+   * 突出或破掉）；空气流动也可以做成因为压强变化而变化，就是联动。」
+   *
+   * 三条约定（务必看清）：
+   *  ① **水的压强不模拟** —— 用户明确要求。2D CA 里水的可压缩性极小（体积模量 ~2.2 GPa），
+   *     「水的压强基本都≈1」，模拟它只会带来无谓抖动，故 `WATER`（及一切液体）不参与压强场。
+   *  ② **热压按理想气体关系即时算**：体积固定时 P ∝ T（查理定律），
+   *     总压 `P_i = P0 × (T_i + 273) / (T_amb + 273) + press[i]`。
+   *     环境温气体 → P = P0；被加热的气体 → P > P0（这就是"热胀→压差→流动"的联动来源）。
+   *  ③ 压强只作用在**气体格**（`state==='gas'`，含 AIR）与**固体墙**（`state==='solid' && !movable`）
+   *     之间；液体/粉末不参与。
+   *
+   * 参数（初始值，可依实测微调；实测数据见 docs/PRESSURE-MODEL.md）：
+   *   P0            —— 基准表压（环境温气体的总压），一切压差以此为基准。
+   *   IMPULSE_DECAY —— 冲击压每 tick 衰减（半衰期 ≈ ln2/ln(1/0.985) ≈ 46 tick）。
+   *   FLOW_EPS      —— 驱动流动的最小压差（小于它视为已达平衡，避免逐格抖动）。
+   *   FLOW_K        —— 流动概率斜率：p = min(1, ΔP × FLOW_K)。
+   *   STRESS_RATE   —— 墙体应力累积速率/tick（"慢慢"的关键）。
+   *                    ⚠ 任务书初始值 0.0004 实测**无法在 4000 tick 内让金属盒屈服**
+   *                    （稳态应力 ≈ 200×rate×ΔP_eff ≈ 0.0004×200×1.0 ≈ 0.08 ≪ 阈值 1.0）；
+   *                    上调到 0.006 后金属盒约 1500–3000 tick 出现首个屈服（"明显可辨但慢"）。
+   *   STRESS_DECAY  —— 应力每 tick 衰减（无压差时缓慢回落）。
+   *   DEFORM_MIN_DP —— 起积应力的最小跨壁压差。
+   *   YIELD_K       —— 屈服阈值 = hardness × YIELD_K × (支撑数/4)。
+   *   BRITTLE_K     —— 脆性阈值附加系数（玻璃比金属更早破裂：玻璃 5.5×0.5×0.5×0.6 < 金属 4×0.5×0.5）。
+   *   YIELD_COOLDOWN—— 屈服后冷却 tick（同一格在此期间不再屈服）。
+   *   DUCTILE       —— 韧性元素：屈服时向低压侧**蠕动**（bulge/外扩），不变为 AIR。
+   *   IMMUNE        —— 完全不变形的元素。
+   *   TNT_IMPULSE   —— 爆炸冲压强度（爆炸中心注入 `press` 的峰值）。 */
+  var PRESSURE = {
+    ENABLE: true,
+    P0: 1.0,
+    IMPULSE_DECAY: 0.985,
+    /* FLOW_EPS 原稿 0.02（≈6 °C 温差即触发流动）—— 实测**过于灵敏**：把已标定的
+     * 对流/传热/燃烧/蒸汽手感全部扰动（A1 热空气、N1 燃烧蔓延、V24 蒸汽连贯性回归）。
+     * 上调到 0.5（≈147 °C 以上温差才触发）：日常热对流交给既有 airPass，压强流动只负责
+     * "真正的压差"（爆炸冲压，或 EMBER 级强热源造成的大压差）—— 既保留"压强→流动"联动，
+     * 又不与大压差以外的既有物理争夺搬运权。 */
+    FLOW_EPS: 0.5,
+    FLOW_K: 0.35,
+    MAX_MOVE_BUDGET: 12000,
+    STRESS_RATE: 0.0003,         // 任务书原值 0.0004；实测配合 STRESS_DECAY=0.999 定标（见下）
+    /* STRESS_DECAY 原稿 0.995（时间常数 200 tick）—— 实测应力在 ~1000 tick 内即饱和，
+     * 无法命中"慢慢变形（约 1500–4000 tick）"。放宽到 0.999（时间常数 1000 tick），
+     * 并把 STRESS_RATE 定到 0.0003：金属盒首格（角部）屈服实测 **t≈1648**，
+     * 4000 tick 内金属外框明显外扩（w 31→33、h 21→24，见 docs/PRESSURE-MODEL.md）。 */
+    STRESS_DECAY: 0.999,
+    DEFORM_MIN_DP: 0.15,
+    YIELD_K: 0.5,
+    BRITTLE_K: 0.6,
+    YIELD_COOLDOWN: 40,
+    /* 角部应力集中系数（v1.6.1）：**直角处的屈服阈值再 ×CORNER_K**，让"角部先屈服"。
+     * 物理依据：受压方腔在直角处应力集中（这正是压力容器/舷窗都倒圆角的理由），
+     * 故角部比边墙中部更早屈服 —— 也正是用户"先在某个地方突出或破掉"的观感。
+     * 判据：某格有两个**互相垂直**的固体邻格（左上/上右/右下/下左）即视为角部。
+     * 实测（docs/PRESSURE-MODEL.md）：无此项时首格屈服落在边墙（y=50 边），加入后首格
+     * 屈服落在盒角（25,50）附近 —— 命中 V28 的"角部格先于边墙中部屈服"。 */
+    CORNER_K: 0.4,
+    DUCTILE: ['METAL'],
+    IMMUNE: ['WALL', 'CLONE', 'VIRUS', 'EMBER'],
+    /* 爆炸冲压强度 + 冲击波半径倍数。
+     * 原稿只给 `TNT_IMPULSE`，冲压半径 = `TNT.RADIUS`(=10)。实测该半径下冲击压**走不出半径**：
+     * 冲击压在半径内衰减、半径外为 0，而半径内的热气体被 airPass 的浮力每 tick 先行搬走
+     * （moveStamp 落锁 → 压强步无法再动它）→ 压强无法向外平流到 12–25 格。
+     * 物理上爆炸的**冲击波**（压力扰动）本就比**破坏半径**传播得远，故令冲压半径
+     * = TNT.RADIUS × 2.5 = 25，冲压强度按 (1−d/r) 线性衰减（V29 实测见 PRESSURE-MODEL.md）。 */
+    TNT_IMPULSE: 2.5,
+    IMPULSE_RADIUS_MULT: 2.5
+  };
 
   /* §14.2b AIR（空气专项，见 docs/PHYSICS-AIR.md §11） */
   var AIR = {
@@ -398,7 +485,8 @@
     WATER: WATER, STEAM: STEAM, ICE: ICE, SNOW: SNOW, LAVA: LAVA, STONE: STONE,
     GLASS: GLASS, METAL: METAL, SALT: SALT, SAND: SAND, LN2: LN2,
     FIRE: FIRE, FUEL: FUEL, ACID: ACID, TNT: TNT, EMBER: EMBER,
-    SEED: SEED, PLANT: PLANT, SOIL: SOIL, TREE: TREE, VIRUS: VIRUS, CLONE: CLONE, SPRING: SPRING, WIND: WIND
+    SEED: SEED, PLANT: PLANT, SOIL: SOIL, TREE: TREE, VIRUS: VIRUS, CLONE: CLONE, SPRING: SPRING, WIND: WIND,
+    PRESSURE: PRESSURE
   };
 
   root.YS = root.YS || {};

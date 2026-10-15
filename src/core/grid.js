@@ -3,6 +3,7 @@
  *   320×180，四邻域；零热路径分配。
  *   防重复移动 / 反应：使用递增 tickId 的 stamp 数组，而非每帧清零 flags。
  *   （此为对 §1.1 flags 位的实现级等价优化，见 docs/adr/0001）
+ *   v1.6.1：新增 flowDir（气流方向位标，供渲染器画定向拖影；纯 cosmetic，不入存档）。
  */
 (function (root) {
   'use strict';
@@ -27,6 +28,22 @@
        * 差异，这样他们在流动的时候我就能一眼看出来内部是怎么在流动的"）。
        * 纯 cosmetic：不影响任何物理/测试逻辑，不序列化。 */
       tint: new Uint8Array(n),
+
+      /* v1.6.1 气流可视化（Phase 2）：每格一个方向位标（1=E 2=W 4=N 8=S），
+       * 由 air/movement/wind 的气体置换写入（i↔j 两格都写）。渲染器据此给最近发生
+       * 位移的气体格画极淡的定向拖影。纯 cosmetic：**不入存档**、不参与任何物理逻辑；
+       * clear() / 读档时复位为 0。 */
+      flowDir: new Uint8Array(n),
+
+      /* v1.6.1 压强系统（Phase 3，docs/PRESSURE-MODEL.md）：三个 SoA 数组
+       *   press      —— 冲击压 / 表压（爆炸冲压 + 外部注入；每 tick 指数衰减）
+       *   stress     —— 墙体应力累积（跨壁压差驱动，"慢慢"变形的关键量）
+       *   yieldStamp —— 屈服冷却戳（记录上次屈服 tick，避免同一格连续屈服）
+       * 均为运行时派生量：**不入存档**；clear() / 读档复位为 0。热压不占数组 ——
+       * 热压由各格温度按理想气体关系**即时算出**（见 balance.PRESSURE 注释）。 */
+      press: new Float32Array(n),
+      stress: new Float32Array(n),
+      yieldStamp: new Uint32Array(n),
 
       tickId: 1,
 
@@ -62,6 +79,19 @@
       var te = e[i], tt = t[i], ta = a[i], tl = l[i], ttin = tn[i];
       e[i] = e[j]; t[i] = t[j]; a[i] = a[j]; l[i] = l[j]; tn[i] = tn[j];
       e[j] = te; t[j] = tt; a[j] = ta; l[j] = tl; tn[j] = ttin;
+    };
+
+    /* v1.6.1 气流可视化：把 i→j 的气流方向**同时**写在 i 与 j 两格（方向由 (x,y) 坐标算，
+     * 不按索引差猜）。位标 1=E 2=W 4=N 8=S（N=向上= y 减小）。相邻四邻置换通常只触发
+     * 一组水平或垂直位；对角置换会同时置两方向位。纯 cosmetic，零分配。 */
+    g.markFlow = function (i, j) {
+      var w = this.w, fd = this.flowDir;
+      var xi = i % w, xj = j % w;
+      if (xj > xi) { fd[i] |= 1; fd[j] |= 2; }
+      else if (xj < xi) { fd[i] |= 2; fd[j] |= 1; }
+      var yi = (i / w) | 0, yj = (j / w) | 0;
+      if (yj < yi) { fd[i] |= 4; fd[j] |= 8; }
+      else if (yj > yi) { fd[i] |= 8; fd[j] |= 4; }
     };
 
     /* 将 src 移入空位 dst（dst 必须是 EMPTY），源格变为 EMPTY 并归环境温 */
@@ -112,6 +142,10 @@
     this.latent.fill(0);
     this.moveStamp.fill(0);
     this.reactStamp.fill(0);
+    this.flowDir.fill(0);          // v1.6.1 气流方向位标：清空
+    this.press.fill(0);            // v1.6.1 压强系统：冲击压 / 表压
+    this.stress.fill(0);           // v1.6.1 压强系统：墙体应力
+    this.yieldStamp.fill(0);       // v1.6.1 压强系统：屈服冷却戳
     /* tint 重洗牌：确定性整数哈希（不依赖 RNG 模块，避免加载顺序耦合）→ 0-4 */
     var tn = this.tint;
     for (var q = 0; q < this.n; q++) {

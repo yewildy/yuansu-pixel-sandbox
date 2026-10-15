@@ -220,7 +220,7 @@
     if (settingsPanel) { settingsPanel.remove(); settingsPanel = null; return; }
     settingsPanel = el('div', 'settings-panel');
     var items = [
-      ['showHeat', 'ui.heatmap'], ['showGrid', 'ui.gridLines'],
+      ['showHeat', 'ui.heatmap'], ['showFlow', 'ui.airflow'], ['showGrid', 'ui.gridLines'],
       ['highContrast', 'ui.highContrast'], ['reducedMotion', 'ui.reducedMotion'], ['glow', 'ui.glow']
     ];
     items.forEach(function (it) {

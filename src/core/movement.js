@@ -53,6 +53,11 @@
   var BUOY = Balance.BUOY;
   var LIQUID = Balance.LIQUID;
 
+  /* v1.6.1 气流可视化：气体标志表 —— swapMove 被粉末/液体/气体广泛调用，用一张 Uint8 表
+   * 廉价判断"被置换的是不是气体"，只在气体移动时才写 flowDir（避免液体/粉末刷屏）。 */
+  var GAS_FLAG = new Uint8Array(32);
+  for (var _gfi = 1; _gfi <= 31; _gfi++) GAS_FLAG[_gfi] = (ELS[_gfi].state === 'gas') ? 1 : 0;
+
   /* 有效密度：仅液体/气体随温度膨胀（固体/粉末不参与热对流，且它们本来就不上浮） */
   function effDensity(e, T, amb) {
     var E = ELS[e];
@@ -144,9 +149,12 @@
   }
 
   function swapMove(grid, i, j, tick) {
+    var moving = grid.element[i];   // 交换前 i 格即"移动者"（调用点恒为 self 在 i）
     grid.swap(i, j);
     grid.moveStamp[i] = tick;
     grid.moveStamp[j] = tick;
+    /* v1.6.1 气流可视化：仅气体移动写方向（液体/粉末不写，避免刷屏；判断为一次 Uint8 查表） */
+    if (GAS_FLAG[moving]) grid.markFlow(i, j);
   }
 
   function vent(grid, i, tick, ambient) {

@@ -1321,3 +1321,117 @@ OIL×FIRE 与 FIRE×OIL（双向，跨种子 flaky）。UNEXPECTED 判定恒为 
 - 潜热预算是有限注入（255 度/格），不是无限热的来源；最大交付热量 ≈ 4× 旧模型。
 - `latent` 不入存档，读档时按元素类型重建（STEAM 给满预算）。
 - 顶部边界（2 行 SKY_RELAX + 逸出）仍是主要散热口 ⇒ 开放画布下"房间整体升温"有上限。
+
+---
+
+## H. 气流可视化（v1.6.1，原设计 C5）
+
+> 用户诉求：「空气流动做出来，让我**隐隐约约看到**气流，但不能太明显而遮住了其他东西。」
+> 关联：`src/core/grid.js`（`flowDir` / `markFlow`）、`src/core/air.js::swapStamp`、
+> `src/core/movement.js::swapMove`、`src/core/wind.js::windPass`、`src/render/renderer.js`（`opts.showFlow`）、
+> `tests/run.js`（V27）。
+
+### H.1 数据：`flowDir` 方向位标
+
+- `grid.flowDir: Uint8Array(n)`，每格一个位标，位义 **1=E 2=W 4=N 8=S**（N = 向上 = y 减小）。
+- 写入点：**气体**发生 `i→j` 置换时，由 `grid.markFlow(i, j)` 把方向**同时**写在 `i` 与 `j` 两格
+  （`i` 得到指向 `j` 的位，`j` 得到指向 `i` 的位）。方向由 `(x, y)` 坐标算，**不按索引差猜**。
+- 三个调用点：
+  1. `air.js::swapStamp` —— 覆盖 `airPass` 的全部空气置换（浮力上升 / 下沉 / 风平流 / 斜上）；
+  2. `movement.js::swapMove` —— **仅当被置换者是气体**时写（用一张 `GAS_FLAG` Uint8 表廉价判断，
+     避免液体/粉末移动刷屏；`swapMove` 被粉末/液体/气体广泛调用）；
+  3. `wind.js::windPass` —— 受气体判据保护的调用（注：`windPass` 目前只平流**轻质粉末**，
+     气体平流在 `movement.js` 的气体分支内、已由 `swapMove` 覆盖；此调用为将来扩展预留）。
+- **不入存档**：`grid.clear()` 与 `engine.fromObject()` 都 `fill(0)`；`engine.toObject()` 不包含它。
+- 纯 cosmetic：不参与任何物理/测试判定，故不影响确定性（测试 5 / N1-10 哈希不变）。
+
+### H.2 渲染：极淡的 2 格定向拖影
+
+`renderer.render(grid, { showFlow: true })`（默认开，`V` 键或设置面板「气流显示」切换）：
+
+```
+for 每格 p：
+    flowDir[p] ≠ 0
+且 (tickId - moveStamp[p]) ≤ 10          # 只画"最近 10 tick 内动过"的新鲜位标（≈167 ms）
+且 ELS[element[p]].state === 'gas'       # 只画气体（含 AIR id 1）
+→ addPix(本格, +5/+6/+9)                  # 本格极淡提亮（偏蓝，呼应背景冷色）
+→ 按方向位给下游邻格 addPix(+2/+3/+5)     # 再提亮一次 → 2 格定向拖影
+```
+
+克制原则（避免遮住元素）：
+
+- **只动气体像素**：源格必须是气体，下游邻格也必须是气体（`addFlowNeighbor` 内再判一次）；
+  固体/液体/粉末像素一个都不碰。
+- **不引入新颜色/混合模式**：沿用现成 `addPix`（各通道加法 + 钳制）。
+- **幅度极淡**：源格单次叠加总量 5+6+9 = 20 ≈ **满量程的 ~8%**；下游约一半。
+- `top`/`y=0` 天空层、`moveStamp` 为 0 的未动格自然不渲染（`tickId - 0 > 10`）。
+
+### H.3 验收与实测（V27）
+
+| 断言 | 场景 | 实测 |
+|---|---|---|
+| ① 热源上方出现 flowDir 位标 ≥20 格 | 64×64、底部一排 EMBER、80 tick | 区域内 **679** 格；新鲜位标 **641** |
+| ② 位标会过期（30 tick 前不再渲染计数） | 撤热源 + 全场复位环境温 + 30 tick | 活动期新鲜 **484** → 静止后 **0** |
+| ③ 液体/粉末移动不写 flowDir | 40×40、水柱自由下落 30 tick | `flowDir` 全 0；水柱确实下落（顶格 y 5 → 35） |
+
+### H.4 性能
+
+`showFlow` 开启时的渲染开销：仅一次 O(n) 遍历，且只对"新鲜位标格"做少量 `addPix`；
+不改变仿真成本（`flowDir` 的写入是 `swapMove`/`swapStamp` 内一次 Uint8 查表 + 少量按位或）。
+
+实测（`_diag_p2flow.js`，最小 Canvas 桩 + Node/V8，320×180、95.0% 填充 + EMBER 热源）：
+
+| 指标 | 实测 |
+|---|---|
+| 仿真 tick 成本 | 11.69 ms/tick（120 tick 平均，含沸腾/蒸汽的偏重场景） |
+| `render(showFlow=false)` | 1.628 ms/帧 |
+| `render(showFlow=true)` | 1.779 ms/帧 |
+| **showFlow 叠加成本** | **+0.151 ms/帧（≈ +9.3%）** |
+| 仿真 + 渲染合计 | **13.47 ms**（≤ 16.7 ms 预算 ✓） |
+
+
+
+---
+
+## I. 压强系统（v1.6.1，Phase 3）
+
+> 真源：`docs/PRESSURE-MODEL.md`（完整模型 / 参数表 / 实测）。本附录只记与"空气"相关的那部分，
+> 并说明它与既有 `airPass`（附录 A–G）的分工。用户诉求：「空气流动也可以做成因为压强的变化所以才变化，就是联动。」
+
+### I.1 在 tick 流水线中的位置
+
+`Engine.step()` 在 **`airPass`（步 2）之后、`reactionPass`（步 3）之前**插入 **`Pressure.pressurePass`（步 2b）**：
+
+```
+1  movePass
+2  airPass            （温度驱动浮力/对流/风 —— 负责"开阔处"的热气流）
+2b pressurePass       （v1.6.1：压差驱动气流 + 墙体应力/变形）
+3  reactionPass       （爆炸 → explosionPass 惰性调用 Pressure.impulse 注入冲压）
+```
+
+次序理由：压强驱动的气体置换与 `airPass` 同属"气体搬运"，必须接在其后、并**尊重 `airPass` 已置的
+`moveStamp`**（同一 tick 不重复移动同一格）。
+
+### I.2 与 `airPass` 的分工（避免"两个热气流机制打架"）
+
+| 情形 | 由谁驱动 |
+|---|---|
+| 开阔处的热空气上升 / 冷空气下沉 / 风平流 | **`airPass`**（既有，已按 A1–A6 标定） |
+| 被固体挡住（上方无气体）而"出不去"的热气体 → 向低压侧挤出（缺口、密闭腔） | **`pressurePass`**（纯热压，`FLOW_EPS=0.5`，仅"垂直被堵"时启用） |
+| 爆炸冲击波（冲压 `press≠0`） | **`pressurePass`**（`FLOW_EPS_IMPULSE=0.02`，总是启用） |
+
+> 为什么纯热压要"收着来"：实测放开阈值到 0.02 时，开阔处的热空气会被压强流动额外搬走，
+> 直接冲掉 A1/A3 等已标定的热对流手感（热源上方空气 60 tick 由 603 °C 掉到 26 °C）。
+> 于是让 `airPass` 继续负责开阔处热对流，`pressurePass` 只负责"空气出不去、压强积累"的地方
+> 与爆炸冲击波 —— 两者互补而非重叠。
+
+### I.3 联动证据（V30）
+
+密闭盒内一道竖墙 + 顶部缺口，左侧 EMBER 加热、右侧环境温：热空气在左侧升到顶被天花板挡住 →
+压强积累 → 从缺口挤向右侧。缺口区出现**纯水平（E/W、无 N/S）的 AIR 位移** ≥20 格次/600 tick；
+关闭压强系统后恒为 0（AIR 不参与 `movePass` 的水平扩散，故这是干净的"压强→流动"证据）。
+
+### I.4 关于"水的压强不模拟"
+
+见 `docs/PRESSURE-MODEL.md` §6：水不可压缩（体积模量 ~2.2 GPa），2D 网格上"基本都≈1"，模拟无收益；
+本作水的宏观行为（找平、连通器）已由液体移动规则表达。

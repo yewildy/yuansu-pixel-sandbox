@@ -2,6 +2,49 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.6.1] — 2026-10-15
+
+三项用户反馈的落地：**水源泉不再"给一会儿就死"**、**气流可视化**、**压强系统**。全部零依赖、
+零热路径分配、确定性不变；测试 **82 通过 / 0 失败**（新增 V26–V31），DOM 冒烟 30 帧无错。
+
+### Phase 1 · 水源泉 / 克隆体：累计配额 → 「持续产出 + 活体上限」（docs/SPRING-MODEL.md）
+
+- **修复（用户实测「水源泉只会给一会儿水，根本不持久」）**：旧模型用**全局累计配额**
+  `SPRING.MAX_CELLS=1500` / `CLONE.MAX_CELLS=2000` —— 累计产满即**永久停喷**，把"持续水源"退化成
+  "一次性定量水源"。改为**只要 SPRING/CLONE 自身还在场就持续产出**，仅受活体上限
+  `SPRING.LIVE_MAX=6000` / `CLONE.LIVE_MAX=5000` 节流：世界里产物达上限时**暂停**、降回后**自动恢复**。
+- 活体计数**低频节流**（每 30 tick 扫一次 + 产出时本地即时 +1 保证不越界），无每 tick 全网格扫描；
+  `engine.springCreated/cloneCreated` 保留为**累计统计**（不再参与停喷判定）。
+- 排查确认：其余上限常量（`FIRE.MAX_BURN_CELLS`、`AIR.MAX_MOVE_BUDGET`、`TNT.CHAIN_MAX`、`P.MAX_EXPLOSION_CELLS`）
+  都是**活体/每 tick/每次事件**口径，非累计配额，保持不动。
+- 测试：12b 改为"活体上限"语义（满水暂停 + 排空自动恢复）；新增 **V26** 20000 tick 长跑（分窗口产出
+  666/667/667/666/667，水 ≤ LIVE_MAX）。实测 20000 tick ≈ 11.4 s。
+
+### Phase 2 · 气流可视化（`flowDir`，原设计 C5；docs/PHYSICS-AIR.md 附录 H）
+
+- **新增**（实测该功能此前从未实现）：`grid.flowDir: Uint8Array`（位标 1=E 2=W 4=N 8=S），在
+  `air.js::swapStamp` / `movement.js::swapMove`（**仅气体**）/ `wind.js::windPass` 的气体置换处写入
+  （方向由 `(x,y)` 坐标算，i↔j 两格都写）。不入存档（`clear`/读档复位为 0）。
+- **渲染**：`renderer` 新增 `opts.showFlow`（默认开，`V` 键 / 设置面板「气流显示」切换）：只对
+  **最近 10 tick 内移动过**的气体格（含 AIR）做**极淡**加法提亮，并按方向位给下游邻格再提亮 → 2 格定向
+  拖影；**只动气体像素、幅度 ≤ 满量程 ~8%、不引入新颜色/混合模式、不遮元素**。
+- i18n 三语 `ui.airflow`；新增 **V27**（热源上方 ≥20 格位标 / 30 tick 后过期 / 水柱下落不写）。
+- 性能：`showFlow` 叠加成本 **+0.15 ms/帧（≈+9%）**，仿真+渲染合计 ≈13.5 ms ≤ 16.7 ms。
+
+### Phase 3 · 压强系统（docs/PRESSURE-MODEL.md；docs/PHYSICS-AIR.md 附录 I）
+
+- **新增 `src/core/pressure.js`（步 2b：`airPass` 之后、`reactionPass` 之前）**：
+  **热压** `P_i = P0·(T_i+273)/(amb+273) + press[i]` 即时算（水不模拟，用户要求）；
+  **压差驱动气流**（与 airPass 分工：开阔处热对流仍归 airPass，压强只管"空气出不去"与爆炸冲压）；
+  **墙体应力/变形**：`ΔP` 累积应力 → 韧性（METAL）向低压侧蠕动、脆性破碎为 AIR，**角部应力集中**先屈服。
+- **`grid` 新增** `press/stress/yieldStamp`（不入存档）；`balance` 新增 `PRESSURE` 组；`reactions::explosionPass`
+  惰性调用 `Pressure.impulse` 注入冲击压（冲压半径 = 破坏半径 × 2.5）。
+- 加载清单 4 处插入 `pressure`（index.html / tests/run.js / tests/pairwise.js / _build/dom-smoke.js）。
+- 新增 **V28**（金属盒"慢慢"变形、角部先屈服 + 无热源对照不变）/ **V29**（爆炸冲击波：12–25 格内
+  冲压 + 向外气流）/ **V30**（缺口纯水平 AIR 位移 = 压强联动证据）/ **V31**（WALL 免疫）。
+- 参数定标（实测）：`STRESS_RATE 0.0004→0.0003`、`STRESS_DECAY 0.995→0.999`、`FLOW_EPS 0.02→0.5`、
+  新增 `CORNER_K=0.4` / `IMPULSE_RADIUS_MULT=2.5`；均在 balance.js 注释与 PRESSURE-MODEL.md 记录理由。
+
 ## [1.5.0] — 2026-10-15
 
 「树、水、火」。按用户要求**先调研原版**再实现的**「种子 → 树」**模型（木质树干/树枝 + 树叶 + 随机抽枝，尺寸由吸水量决定），并修三处“太慢/不合理”：液体找平、火焰烧水、过冷蒸汽。

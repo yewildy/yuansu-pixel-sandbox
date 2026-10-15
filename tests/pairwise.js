@@ -43,7 +43,7 @@ var path = require('path');
 var fs = require('fs');
 /* 注意：'air' 必须在 'movement' 之后、'biology' 之前 —— engine.js 依赖 root.YS.Air（ADR-0005） */
 var CORE = ['balance', 'rng', 'elements', 'grid', 'thermal', 'transitions',
-  'reactions', 'movement', 'air', 'biology', 'wind', 'engine'];
+  'reactions', 'movement', 'air', 'biology', 'wind', 'pressure', 'engine'];
 CORE.forEach(function (m) { require(path.join(__dirname, '..', 'src', 'core', m + '.js')); });
 
 var YS = globalThis.YS;

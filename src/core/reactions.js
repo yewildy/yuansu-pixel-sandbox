@@ -145,6 +145,30 @@
     return fireTally >= Balance.FIRE.MAX_BURN_CELLS;
   }
 
+  /* ---------- v1.6.1「活体上限」低频统计（docs/SPRING-MODEL.md） ----------
+   * SPRING/CLONE 由「全局累计配额」改为「持续产出 + 活体上限」后，需要知道**当前世界里**
+   * 该产物的格数。为免每 tick 全网格扫描，采用**每 LIVE_SCAN_INTERVAL=30 tick** 统计一次并
+   * 缓存：两次扫描之间沿用上次结果（最多滞后 30 tick，对"防灌满世界"这类宏观护栏完全够用）。
+   * 计数不消耗 RNG、不改任何物理状态，故不影响确定性（测试 5 / N1-10）。
+   * tick 回退（新引擎 / engine.clear 后 tick 归 0）时强制重扫，避免跨引擎沿用陈旧缓存。 */
+  var LIVE_SCAN_INTERVAL = 30;
+  var liveScanTick = -1;
+  var liveWaterCount = 0;      // 世界里 WATER 格数（SPRING 的产物活体计数）
+  var liveMovableCount = 0;    // 世界里活跃（movable 且非 AIR）格数（CLONE 的保守活体计数）
+
+  function refreshLiveCounts(grid, tick) {
+    if (tick >= liveScanTick && liveScanTick >= 0 && (tick - liveScanTick) < LIVE_SCAN_INTERVAL) return;
+    liveScanTick = tick;
+    var e = grid.element, n = grid.n, wc = 0, mc = 0;
+    for (var i = 0; i < n; i++) {
+      var v = e[i];
+      if (v === ID.WATER) wc++;
+      if (v !== 1 && ELS[v].movable) mc++;
+    }
+    liveWaterCount = wc;
+    liveMovableCount = mc;
+  }
+
   /* 点燃一格燃料 → FIRE；对 GUNPOWDER/GAS 做 8 邻真链式传播（§9.4） */
   function ignite(grid, j, tick) {
     var e = grid.element[j];
@@ -232,6 +256,12 @@
           }
           bumpTemp(grid, j, Balance.TNT.TEMP_BOOST);
         }
+      }
+      /* v1.6.1 压强系统联动（Phase 3）：本爆炸中心处理完半径格后，向其**冲击波半径**（破坏
+       * 半径 × IMPULSE_RADIUS_MULT）内的气体格注入冲击压（docs/PRESSURE-MODEL.md）。
+       * 惰性调用（root.YS.Pressure 可能因加载顺序未就绪）。 */
+      if (root.YS.Pressure) {
+        root.YS.Pressure.impulse(grid, cx, cy, R * Balance.PRESSURE.IMPULSE_RADIUS_MULT, Balance.PRESSURE.TNT_IMPULSE);
       }
     }
   }
@@ -466,10 +496,11 @@
           continue;
         }
 
-        /* --- CLONE：R14 复制 --- */
+        /* --- CLONE：R14 复制（v1.6.1：累计配额 → 活体上限，持续复制不永久停） --- */
         if (e === ID.CLONE) {
-          if (ctx.cloneCreated >= Balance.CLONE.MAX_CELLS) continue;
           if ((tick % Balance.CLONE.COPY_INTERVAL) !== 0) continue;
+          refreshLiveCounts(grid, tick);
+          if (liveMovableCount >= Balance.CLONE.LIVE_MAX) continue;   // 活体上限：暂停，降回后自动恢复
           var nb8 = grid.fill8(i);
           /* 选一个非静态的邻居元素作为模板 */
           var tmpl = 0;
@@ -486,6 +517,7 @@
               el[n] = tmpl; grid.temp[n] = grid.temp[i]; grid.age[n] = 0; grid.latent[n] = 0;
               grid.reactStamp[n] = tick;
               ctx.cloneCreated++;
+              liveMovableCount++;       // 本地即时记账：两次低频扫描之间也不会越过活体上限
               break;
             }
           }
@@ -493,11 +525,14 @@
         }
 
         /* --- SPRING：R19 持续出水（质量创生例外，与 CLONE 并列，§8.4 / §13.2） ---
-         * 每 SPRING.EMIT_INTERVAL tick 向一个相邻 AIR 格生成 WATER（20 °C）；
-         * 全局累计产水达 SPRING.MAX_CELLS 后停喷；SPRING 自身不移动、不消耗。 */
+         * 每 SPRING.EMIT_INTERVAL tick 向一个相邻 AIR 格生成 WATER（20 °C）。
+         * v1.6.1：**只要 SPRING 自身还在场就持续产出**，仅受活体上限 SPRING.LIVE_MAX 节流 ——
+         * 世界里 WATER 总数达上限时暂停，降回后自动恢复（旧模型是累计配额、产满即永久停喷）。
+         * SPRING 自身不移动、不消耗。 */
         if (e === ID.SPRING) {
-          if (ctx.springCreated >= Balance.SPRING.MAX_CELLS) continue;
           if ((tick % Balance.SPRING.EMIT_INTERVAL) !== 0) continue;
+          refreshLiveCounts(grid, tick);
+          if (liveWaterCount >= Balance.SPRING.LIVE_MAX) continue;   // 活体上限：暂停，降回后自动恢复
           var nbs = grid.fill4(i);
           /* 出水方向优先序：下 → 左 → 右 → 上（让水自然下落/汇聚） */
           var pref = [nbs[3], nbs[0], nbs[1], nbs[2]];
@@ -509,6 +544,7 @@
               grid.temp[sp] = P.AMBIENT_T; grid.nextTemp[sp] = P.AMBIENT_T;
               grid.age[sp] = 0; grid.latent[sp] = 0; grid.reactStamp[sp] = tick;
               ctx.springCreated++;
+              liveWaterCount++;         // 本地即时记账：两次低频扫描之间也不会越过活体上限
               break;
             }
           }

@@ -14,6 +14,12 @@
   var RNG = root.YS.RNG;
   var ELS = Elements.ELEMENTS;
 
+  /* v1.6.1 气流可视化：气体标志表。注意 **windPass 目前只平流轻质粉末（state==='powder'）**，
+   * 气体平流在 movement.js 的 gas 分支（§5.3-1 优先级）内执行、已由 swapMove 写 flowDir；
+   * 这里保留一处**受气体判据保护的** markFlow 调用，以便将来 windPass 若开始搬运气体时自动生效。 */
+  var GAS_FLAG_W = new Uint8Array(32);
+  for (var _gwi = 1; _gwi <= 31; _gwi++) GAS_FLAG_W[_gwi] = (ELS[_gwi].state === 'gas') ? 1 : 0;
+
   /* 风状态对象 */
   function create() { return { x: 0, y: 0, strength: 0, angle: 0 }; }
 
@@ -80,6 +86,7 @@
         if (t === 1 || (ELS[t].movable && ELS[t].density < E.density && ELS[t].state !== 'gas')) {
           grid.swap(i, j);
           grid.moveStamp[i] = tick; grid.moveStamp[j] = tick;
+          if (GAS_FLAG_W[e]) grid.markFlow(i, j);   // v1.6.1：仅当被搬运者确为气体时记气流方向
         }
       }
     }

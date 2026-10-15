@@ -5,6 +5,7 @@
  *   更新顺序（对齐 §1.2，含三处实现级等价调整，见 docs/adr/0003 与 ADR-0005）：
  *     1 movePass      §5
  *     2 airPass       §5.4/§6（AIR 专用对流/浮力/风；隔帧执行；见 docs/PHYSICS-AIR.md）
+ *     2b pressurePass v1.6.1（压强系统：压差驱动气流 + 墙体应力/变形；见 docs/PRESSURE-MODEL.md）
  *     3 reactionPass  §8（内含 §9.5 爆炸 + §9.6 耗氧）
  *     4 lifePass      §10（严格生态，见 docs/PLANT-MODEL.md）
  *     5 thermalPass   §6.1（diffuse 结果写入 nextTemp；含空气-空气双轨配对；
@@ -29,6 +30,7 @@
   var Air = root.YS.Air;
   var Biology = root.YS.Biology;
   var Wind = root.YS.Wind;
+  var Pressure = root.YS.Pressure;   // v1.6.1 压强系统（Phase 3）
   var ID = Elements.ID;
   var P = Balance.PHYS;
 
@@ -62,6 +64,10 @@
 
       Movement.movePass(g, ctx);
       Air.airPass(g, ctx);
+      /* v1.6.1 压强系统（Phase 3）：airPass 之后、reactionPass 之前 ——
+       * 压差驱动的气体流动紧接空气对流（同为"气体搬运"，且要尊重 airPass 已置的 moveStamp）；
+       * 墙体应力/变形在此累积（热压即时算、冲击压来自爆炸/impulse）。 */
+      if (Pressure) Pressure.pressurePass(g, ctx);
       Reactions.reactionPass(g, ctx);
       Biology.lifePass(g, ctx);
       Thermal.diffuse(g);
@@ -109,6 +115,10 @@
       grid.temp.set(o.temp);
       if (o.age) grid.age.set(o.age);
       grid.latent.fill(0);
+      grid.flowDir.fill(0);        // v1.6.1：气流方向位标不入存档 → 读档后清空
+      grid.press.fill(0);          // v1.6.1 压强系统：冲击压不入存档 → 读档后清空
+      grid.stress.fill(0);         // v1.6.1 压强系统：墙体应力
+      grid.yieldStamp.fill(0);     // v1.6.1 压强系统：屈服冷却戳
       /* v1.6.0：latent 不入存档 → 读档后给所有 STEAM 格补回潜热预算，
        * 否则读档的蒸汽没有潜热，会立刻凝结（表现为"一读档蒸汽就变水"）。 */
       for (var si = 0; si < grid.n; si++) {
