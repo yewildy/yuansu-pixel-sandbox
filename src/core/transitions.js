@@ -44,7 +44,7 @@
     transitions = 0;
     var w = grid.w, h = grid.h;
     var el = grid.element, nt = grid.nextTemp, lat = grid.latent;
-    var x, y, i, e, T, p, sub;
+    var x, y, i, e, T, p, sub, spend;
 
     for (y = 0; y < h; y++) {
       for (x = 0; x < w; x++) {
@@ -62,7 +62,7 @@
               if (lat[i] >= P.LATENT_TICKS_BOIL) {
                 p = Math.min(Balance.WATER.EVAP_P_MAX,
                   Balance.WATER.EVAP_P_AT_100 + Balance.WATER.EVAP_SLOPE * (T - 100));
-                if (RNG.hash01(x, y, ID.WATER * 131 + tick) < p) { el[i] = ID.STEAM; lat[i] = 0; transitions++; }
+                if (RNG.hash01(x, y, ID.WATER * 131 + tick) < p) { el[i] = ID.STEAM; lat[i] = Balance.STEAM.LATENT_MAX; transitions++; }
               }
             } else if (T <= Balance.WATER.FREEZE_T) {
               if (T >= Balance.WATER.FREEZE_T - 2) nt[i] = Balance.WATER.FREEZE_T;
@@ -120,6 +120,21 @@
            *   ③ T < COND_T → p = COND_P_BASE + COND_P_SLOPE × 过冷度，**无 tick 门槛**；
            *   ④ 近饱和窗口内缺凝结核 → 乘 HOMO_F（羽流有时间上升）；深度过冷 → 到处都凝。 */
           case 23: /* STEAM */
+            /* v1.6.0 ★潜热预算：只要还有预算，蒸汽就把"被空气抽走的显热"用凝结潜热补回来
+             * （温度钉回饱和温度），补回来的代价按**热量**记账 —— 于是：
+             *   · 空气被实实在在加热（热量来自潜热，不是凭空产生：预算是有限的）；
+             *   · 蒸汽自身始终 ≥ ~100 °C，不会变成"20 度的蒸汽"（v1.5.1 的要求保持）；
+             *   · 周围越冷 → 每 tick 被抽走的热越多 → 预算耗得越快 → 越早凝结落下来。
+             * 这正是用户要的"等冷到什么温度才会落下去"，而且**凝结高度会随上方空气变暖而抬升**
+             * （暖柱里每 tick 抽走的热少 → 预算耐久 → 蒸汽升得更高），不再是"一堵固定的冷墙"。 */
+            if (lat[i] > 0) {
+              if (T < Balance.STEAM.COND_T) {
+                spend = (Balance.STEAM.COND_T - T) * Balance.STEAM.LATENT_SPEND;
+                lat[i] = (lat[i] > spend) ? lat[i] - spend : 0;
+                nt[i] = Balance.STEAM.COND_T;      // 潜热补温：钉回饱和温度
+              }
+              break;                               // 仍有潜热 → 不凝结
+            }
             if (T >= Balance.STEAM.COND_T) {
               if (lat[i] > 0) lat[i]--;
               break;

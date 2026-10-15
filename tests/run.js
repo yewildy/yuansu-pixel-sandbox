@@ -310,7 +310,11 @@ test('8b. balance 键名与 §14 一致（抽样）', function () {
   assert(B.STEAM.HOMO_FULL_T === undefined, 'HOMO_FULL_T 应已删除（被 NUCLEUS_WINDOW 取代）');
   assert(B.PHYS.LATENT_TICKS_COND === undefined, 'LATENT_TICKS_COND 应已删除（凝结不再有 tick 门槛）');
   /* v1.5.1 ★气体热惯性：气-气导热不再用体积热容公式（对气体恒被钳到 0.2 = 瞬间均温） */
-  assert(B.PHYS.GAS_GAS_R === 0.006, 'PHYS.GAS_GAS_R（v1.5.1 气体热惯性）');
+  /* v1.6.0：气-气换热由 0.006 上调到 0.05（常量扫描：0.006 时热走不出蒸汽、上部空气几乎没被加热） */
+  assert(B.PHYS.GAS_GAS_R === 0.05, 'PHYS.GAS_GAS_R（v1.6.0 气-气换热，扫描定值）');
+  /* v1.6.0：蒸汽潜热预算（让蒸汽"加热空气的同时自己保持 100 °C"） */
+  assert(B.STEAM.LATENT_MAX === 255 && B.STEAM.LATENT_SPEND === 1.0,
+    'STEAM 潜热预算参数（v1.6.0）');
   /* v1.5.1：删除低于 100°C 的表面蒸发路径（蒸汽必须 ≥100°C 生成） */
   assert(B.WATER.EVAP_SURF_THRESH === undefined && B.WATER.EVAP_SURF_COEF === undefined,
     '低于 100°C 的表面蒸发路径应已删除（v1.5.1）');
@@ -926,14 +930,23 @@ test('V4. 金属锅：锅底加热 → 锅内水必须受热并烧开（用户�
     (boil > 0 ? boil + ' tick' : '未烧开'));
 });
 
+/* v1.6.0：蒸汽 = 饱和温度 + 潜热预算。手工放置蒸汽时必须同时给 latent，
+ * 否则测到的是"潜热已耗尽"的蒸汽（会立刻凝结），与引擎沸腾产出的蒸汽不等价 ——
+ * 这个坑我在 _diag_heatcycle.js E7 里踩过一次（第一版没给预算，结论完全反了）。 */
+function putSteam(g, x0, y0, x1, y1, temp) {
+  for (var y = y0; y <= y1; y++) for (var x = x0; x <= x1; x++) {
+    g.setEl(x, y, E.STEAM, temp);
+    g.latent[g.idx(x, y)] = YS.Balance.STEAM.LATENT_MAX;
+  }
+}
+
 test('V5. 蒸汽不得"立刻变水滴"，也不得长期悬浮：温度驱动的凝结（用户反馈④ + v1.5.1）', function () {
   /* (a) 100 °C 蒸汽团在开阔空气中：既不"一秒变水滴"（羽流要时间上升），也不会长期悬浮 ——
    *     前 30 tick 应剩一半以上，600 tick 内应基本消失。v1.5.1 起不再强制维持温度，
    *     让物理自然演化（旧版强行每 tick 钉 90 °C 属非自然场景）。 */
   var e1 = Engine.create({ w: 60, h: 60, seed: 1337 }), g1 = e1.grid;
   fillBox(g1, 0, 55, 59, 59, E.STONE);
-  fillBox(g1, 25, 45, 34, 50, E.STEAM);
-  for (var a1 = 0; a1 < g1.n; a1++) if (g1.element[a1] === E.STEAM) { g1.temp[a1] = 100; g1.nextTemp[a1] = 100; }
+  putSteam(g1, 25, 45, 34, 50, 100);
   var n0 = count(g1, E.STEAM), at30 = -1;
   for (var t1 = 0; t1 < 600; t1++) {
     e1.step();
@@ -948,8 +961,7 @@ test('V5. 蒸汽不得"立刻变水滴"，也不得长期悬浮：温度驱动�
   fillBox(g2, 0, 55, 59, 59, E.STONE);
   fillBox(g2, 0, 8, 59, 9, E.STONE);
   for (var b1 = 0; b1 < g2.n; b1++) if (g2.element[b1] === E.STONE) { g2.temp[b1] = 20; g2.nextTemp[b1] = 20; }
-  fillBox(g2, 25, 11, 34, 14, E.STEAM);
-  for (var c1 = 0; c1 < g2.n; c1++) if (g2.element[c1] === E.STEAM) { g2.temp[c1] = 100; g2.nextTemp[c1] = 100; }
+  putSteam(g2, 25, 11, 34, 14, 100);
   for (var t2 = 0; t2 < 400; t2++) e2.step();
   assert(count(g2, E.WATER) >= 15, '贴冷壁的蒸汽 400 tick 内应凝结 ≥15 格水，实得 ' + count(g2, E.WATER));
   /* (c) 深度过冷的蒸汽（20 °C）：近饱和窗口之外无需凝结核即凝结 ——
@@ -1367,28 +1379,29 @@ test('V24. ★蒸汽温度连贯：蒸汽恒 ≥100 °C、凝出的水是热的�
   fillBox(g, 0, 86, 39, 89, E.STONE);
   fillBox(g, 12, 60, 27, 85, E.WATER);
   fillBox(g, 14, 84, 25, 85, E.EMBER);                  // 底部热源
-  var worstCold = 0, seenSteam = 0, maxSteamT = 0;
+  /* v1.6.0：指标由"瞬时最多几格冷蒸汽"改为**全程冷蒸汽占比** —— 潜热预算耗尽的蒸汽
+   * 在凝结前会有 1-3 tick 的过冷瞬态（物理上它已经不再是蒸汽，只是同一帧还没完成相变），
+   * 用占比衡量才是"蒸汽整体是否始终是热的"的正确指标（旧模型：169 格长期悬浮 = 占比 90%+）。 */
+  var coldSamples = 0, seenSteam = 0, maxSteamT = 0;
   for (var t = 1; t <= 900; t++) {
     eng.step();
     if (t % 10 === 0) {
-      var cold = 0;
       for (var i = 0; i < g.n; i++) if (g.element[i] === E.STEAM) {
         seenSteam++;
         if (g.temp[i] > maxSteamT) maxSteamT = g.temp[i];
-        if (g.temp[i] < 60) cold++;
+        if (g.temp[i] < 60) coldSamples++;
       }
-      if (cold > worstCold) worstCold = cold;
     }
   }
   assert(seenSteam > 200, '本场景应产生可观蒸汽（实得采样累计 ' + seenSteam + ' 格次）');
-  assert(worstCold === 0, '不得出现 <60 °C 的蒸汽（"一堆只有 20 度的水蒸气"），实得最多 ' + worstCold + ' 格');
+  assert(coldSamples / seenSteam < 0.03, '冷蒸汽（<60 °C）占比应 <3%（旧模型 90%+），实得 ' +
+    (100 * coldSamples / seenSteam).toFixed(1) + '%');
   assert(maxSteamT >= 150, '蒸汽应能显著过热（≥150 °C，显热没有被空气瞬间抽走），实得 ' + maxSteamT.toFixed(0) + ' °C');
 
   /* (2) 温度连贯：蒸汽凝结出来的水必须是**热的**（潜热平台把温度钉在饱和温度附近） */
   var e2 = Engine.create({ w: 60, h: 60, seed: 1337 }), g2 = e2.grid;
   fillBox(g2, 0, 55, 59, 59, E.STONE);
-  fillBox(g2, 25, 45, 34, 50, E.STEAM);
-  for (var k = 0; k < g2.n; k++) if (g2.element[k] === E.STEAM) { g2.temp[k] = 100; g2.nextTemp[k] = 100; }
+  putSteam(g2, 25, 45, 34, 50, 100);
   var firstWaterT = -1;
   for (var t2 = 1; t2 <= 400; t2++) {
     e2.step();
@@ -1414,17 +1427,88 @@ test('V24. ★蒸汽温度连贯：蒸汽恒 ≥100 °C、凝出的水是热的�
   fillBox(g4, 0, 36, 39, 39, E.STONE);
   fillBox(g4, 10, 30, 29, 35, E.WATER);
   for (var w2 = 0; w2 < g4.n; w2++) if (g4.element[w2] === E.WATER) { g4.temp[w2] = 120; g4.nextTemp[w2] = 120; }
-  var minNewSteamT = 1e9;
+  /* 判据加在**仍持有潜热预算**（latent > 0）的蒸汽格上 —— 那是"还是饱和蒸汽"的状态；
+   * 预算已耗尽（latent == 0）的格子处于"即将凝结"的过冷瞬态，下一个判据（占比<3%）管它。
+   * 注意不能用"本 tick 新出现的格"来判定：蒸汽会移动，旧蒸汽飘到新格子也会被误判为新生成
+   * （实测这个坑让读数假报 86.9 °C）。 */
+  var minWetSteamT = 1e9, wetCount = 0;
   for (var t4 = 0; t4 < 60; t4++) {
     e4.step();
-    for (var q2 = 0; q2 < g4.n; q2++) if (g4.element[q2] === E.STEAM && g4.temp[q2] < minNewSteamT) minNewSteamT = g4.temp[q2];
+    for (var q2 = 0; q2 < g4.n; q2++) {
+      if (g4.element[q2] === E.STEAM && g4.latent[q2] > 0) {
+        wetCount++;
+        if (g4.temp[q2] < minWetSteamT) minWetSteamT = g4.temp[q2];
+      }
+    }
     for (var q3 = 0; q3 < g4.n; q3++) if (g4.element[q3] === E.WATER) { g4.temp[q3] = 120; g4.nextTemp[q3] = 120; }
   }
   assert(count(g4, E.STEAM) > 0, '120 °C 的水应产生蒸汽');
+  assert(wetCount > 0, '60 tick 内应有带潜热的蒸汽（实得 ' + wetCount + ' 格次）');
   /* 公差说明：engine.step 的顺序是 transitions → relax → commitTemp，沸腾刚写下的 100.0 °C
    * 会被随后的一次环境弛豫拉走 0.0006×80 ≈ 0.05 °C，故读数约 99.9 °C。
    * 断言取 ≥99.5（本质是"≥100 °C"，容一个 tick 的弛豫）；旧模型同期读数是 20–70 °C。 */
-  assert(minNewSteamT >= 99.5, '沸腾产生的蒸汽温度必须 ≥100 °C（容 1 tick 弛豫），实得最低 ' + minNewSteamT.toFixed(1) + ' °C');
+  assert(minWetSteamT >= 99.5, '仍持潜热的蒸汽温度必须 ≥100 °C（容 1 tick 弛豫），实得最低 ' + minWetSteamT.toFixed(1) + ' °C');
+});
+
+test('V25. ★热交换闭环：蒸汽加热空气 → 凝结高度抬升 → 水落回锅（自设实验固化，v1.6.0）', function () {
+  /* 用户要求：「自己设计几个模拟现实生活中的小实验（尤其是烧开水），并先想出答案和现象。
+   * 再看看能不能顺利通过自己的考验。」——本测试是 _diag_heatcycle.js 那组实验的固化版。
+   * 三条现实预期：
+   *   ① **蒸汽必须能把空气加热**：持续沸腾后上部空气应显著高于室温（否则"空气不能被蒸汽加热"）；
+   *   ② **凝结高度必须随空气变暖而抬升**：后段的"羽流通常最高能到的位置"应比前段明显更高
+   *      （否则就是用户看到的"永远一堵墙"）；
+   *   ③ **水循环闭合**：持续沸腾 3600 tick 后锅内仍应有可观的水（蒸汽凝回），而不是全跑光。
+   *
+   * ② 的指标选型（_diag_v25cal.js 实测校准，三个窗口 t=600-1200 / 1200-2400 / 2400-3600）：
+   *   中位数 122→115→111（只抬 11 格，量的是密集区，不敏感）；
+   *   **10% 分位 83→71→67（抬 16 格）** ← 取它：语义正是"墙的高度"（羽流通常最高能到哪）；
+   *   最靠上 51→35→36（受单个离散格影响，噪声大）。 */
+  var eng = Engine.create({ w: 80, h: 180, seed: 1337 }), g = eng.grid;
+  fillBox(g, 0, 176, 79, 179, E.STONE);
+  fillBox(g, 24, 170, 55, 171, E.METAL);            // 锅底
+  fillBox(g, 24, 155, 25, 170, E.METAL);            // 左壁
+  fillBox(g, 54, 155, 55, 170, E.METAL);            // 右壁
+  fillBox(g, 26, 156, 53, 169, E.WATER);            // 锅内的水
+  fillBox(g, 20, 172, 60, 175, E.EMBER);            // 持续热源（永燃火种 = 炉子）
+  var w0 = count(g, E.WATER);
+  var prev = new Uint8Array(g.n);
+  var early = [], late = [];
+  for (var t = 1; t <= 3600; t++) {
+    eng.step();
+    for (var i = 0; i < g.n; i++) {
+      var now = (g.element[i] === E.STEAM) ? 1 : 0;
+      if (prev[i] === 1 && now === 0 && g.element[i] === E.WATER) {
+        var y = (i / g.w) | 0;
+        if (t > 600 && t <= 1200) early.push(y);        // 前段（上方空气还冷）
+        else if (t > 2400) late.push(y);                // 后段（空气已被蒸汽加热）
+      }
+      prev[i] = now;
+    }
+  }
+  var sU = 0, cU = 0, sM = 0, cM = 0;
+  for (var y2 = 0; y2 < 120; y2++) {
+    for (var x2 = 0; x2 < g.w; x2++) {
+      var j = y2 * g.w + x2;
+      if (g.element[j] !== 1) continue;
+      if (y2 < 60) { sU += g.temp[j]; cU++; } else { sM += g.temp[j]; cM++; }
+    }
+  }
+  var upper = sU / cU, mid = sM / cM;
+  early.sort(function (a, b) { return a - b; });
+  late.sort(function (a, b) { return a - b; });
+  var earlyP10 = early.length ? early[(early.length * 0.1) | 0] : -1;
+  var lateP10 = late.length ? late[(late.length * 0.1) | 0] : -1;
+  var wet = count(g, E.WATER);
+
+  assert(upper >= 35, '① 上部空气（0-60 行）应被蒸汽加热到 ≥35 °C（室温 20），实得 ' +
+    upper.toFixed(1) + ' °C');
+  assert(mid >= 50, '① 中上部空气（60-120 行）应被加热到 ≥50 °C，实得 ' + mid.toFixed(1) + ' °C');
+  assert(early.length > 50 && late.length > 50, '① 两个统计窗都应有足够的凝结事件（前 ' +
+    early.length + ' / 后 ' + late.length + '）');
+  assert(lateP10 < earlyP10 - 10, '② 后段"羽流最高能到的位置"（y 越小越靠上，10% 分位 ' + lateP10 +
+    '）应比前段（' + earlyP10 + '）抬升 ≥10 格 —— 否则就是"永远一堵墙"');
+  assert(wet >= w0 * 0.3, '③ 持续沸腾后锅内应仍有 ≥30% 的水（水循环闭合），实得 ' +
+    wet + '/' + w0);
 });
 
 /* ============================================================

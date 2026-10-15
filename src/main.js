@@ -16,7 +16,7 @@
 
   /* v1.4.1 游戏内版本标识（用户：「在推送游戏内标上版本以及最后修改时间，这样我才知道我玩的是哪一版」）
    * 每次发布前手动同步此处 + index.html 的 ?v= 缓存破坏参数。 */
-  var VERSION = { v: 'v1.5.1', built: '2026-10-15' };
+  var VERSION = { v: 'v1.6.0', built: '2026-10-15' };
   YS.VERSION = VERSION;
 
   function initialTemp(id) {
@@ -24,6 +24,10 @@
       case ID.LAVA: return 1200;
       case ID.FIRE: return 600;
       case ID.EMBER: return 900;    // v1.4.0 永燃火种（与 Balance.EMBER.TEMP 一致）
+      /* v1.6.0：蒸汽在 1 atm 下只存在于饱和温度（100 °C）附近 —— 旧值让画刷直接画出
+       * **20 °C 的水蒸气**，这正是用户看到的"一堆只有 20 度的水蒸气"的来源之一。
+       * 顺带：画出的蒸汽还会拿到潜热预算（见 paintAt），否则它一落到 <100 °C 就立刻凝结。 */
+      case ID.STEAM: return 100;
       case ID.LN2: return -196;
       case ID.ICE: return -10;
       case ID.SNOW: return -10;
@@ -68,6 +72,9 @@
             g.age[y * g.w + x] = 0;
           } else {
             g.setEl(x, y, id, temp);
+            /* v1.6.0：画刷画出的蒸汽也要发潜热预算（= 引擎沸腾产出的蒸汽同等对待），
+             * 否则手工蒸汽没有潜热、碰到比 100 °C 冷的地方会立刻凝结成水。 */
+            if (id === ID.STEAM) g.latent[y * g.w + x] = YS.Balance.STEAM.LATENT_MAX;
           }
         }
       }

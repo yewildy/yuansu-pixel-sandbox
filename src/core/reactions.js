@@ -404,14 +404,15 @@
             if (t === ID.WATER) {
               el[i] = ID.STONE; grid.reactStamp[i] = tick; grid.latent[i] = 0; grid.age[i] = 0;
               if (RNG.hash01(n % w, (n / w) | 0, tick * 23 + 1) < Balance.LAVA.STEAM_P) {
-                el[n] = ID.STEAM; grid.age[n] = 0; grid.latent[n] = 0;
+                el[n] = ID.STEAM; grid.age[n] = 0; grid.latent[n] = Balance.STEAM.LATENT_MAX;   // v1.6.0：发潜热预算
               }
               grid.reactStamp[n] = tick;
               bumpTemp(grid, n, 120);
               break;
             } else if (t === ID.ICE) {
               el[i] = ID.STONE; grid.reactStamp[i] = tick; grid.latent[i] = 0; grid.age[i] = 0;
-              el[n] = RNG.hash01(n % w, (n / w) | 0, tick * 29 + 2) < 0.7 ? ID.STEAM : ID.WATER;
+              if (RNG.hash01(n % w, (n / w) | 0, tick * 29 + 2) < 0.7) { el[n] = ID.STEAM; grid.latent[n] = Balance.STEAM.LATENT_MAX; }
+              else el[n] = ID.WATER;
               grid.age[n] = 0; grid.latent[n] = 0; grid.reactStamp[n] = tick;
               bumpTemp(grid, n, 120);
               break;

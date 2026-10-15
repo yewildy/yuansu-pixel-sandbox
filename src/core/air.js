@@ -77,6 +77,14 @@
         if (d > buoyDt) {
           driven++;
           j = i - w;                                       // 正上方
+          /* v1.6.0 试验记录（已回退）：这里曾加上"上方必须更冷（temp[j] < temp[i]）"的
+           * 严格浮力判据，理由是"热空气不该钻到更热的空气上面"。
+           * 实测后果是灾难性的：暖空气升到"上方没有更冷空气"的高度就停住 → 热量再也到不了
+           * 顶部边界（顶部只能靠 2 行 SKY_RELAX 散热）→ 整场大气被加热到 **289 °C 且均匀**
+           * （_diag_sweep.js）。也就是说，旧实现里这点"不物理的置换"实际承担着**把热输运到
+           * 顶部边界排掉**的角色 —— 它就是本模型的"对流散热通道"。
+           * 真要修需要重做边界条件（例如顶部无条件把暖空气排出），超出本轮范围，
+           * 故保留原判据并在 docs/PHYSICS-AIR.md 附录 G 如实记录该近似。 */
           if (el[j] === AIR && stamp[j] !== tick) {
             p = (d - buoyDt) / scale; if (p > pmax) p = pmax;
             if (RNG.hash01(x, y, tick * 211 + 1) < p) { swapStamp(grid, i, j, tick); moved++; continue; }

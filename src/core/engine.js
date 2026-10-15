@@ -109,6 +109,11 @@
       grid.temp.set(o.temp);
       if (o.age) grid.age.set(o.age);
       grid.latent.fill(0);
+      /* v1.6.0：latent 不入存档 → 读档后给所有 STEAM 格补回潜热预算，
+       * 否则读档的蒸汽没有潜热，会立刻凝结（表现为"一读档蒸汽就变水"）。 */
+      for (var si = 0; si < grid.n; si++) {
+        if (grid.element[si] === ID.STEAM) grid.latent[si] = Balance.STEAM.LATENT_MAX;
+      }
       this.wind.x = o.wind.x; this.wind.y = o.wind.y;
       this.wind.strength = o.wind.strength; this.wind.angle = o.wind.angle || 0;
       this.seed = o.seed !== undefined ? o.seed : this.seed;
