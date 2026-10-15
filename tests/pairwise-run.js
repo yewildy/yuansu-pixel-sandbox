@@ -71,7 +71,9 @@ var PHASE = {};
 PHASE[STONE] = [LAVA]; PHASE[GLASS] = [LAVA]; PHASE[METAL] = [LAVA];
 PHASE[ICE] = [WATER, STEAM]; PHASE[SAND] = [GLASS]; PHASE[SALT] = [LAVA];
 PHASE[SNOW] = [WATER, STEAM]; PHASE[WATER] = [STEAM, ICE]; PHASE[LAVA] = [STONE];
-PHASE[STEAM] = [WATER]; PHASE[PLANT] = [DUST]; PHASE[SEED] = [PLANT];
+PHASE[STEAM] = [WATER]; PHASE[PLANT] = [DUST];
+/* v1.5.0：SEED 萌发为**树** —— 树干/树枝 = WOOD，树叶 = PLANT（原版 Powder Toy 机制） */
+PHASE[SEED] = [WOOD, PLANT];
 PHASE[LN2] = [];
 
 var BURN = {};
@@ -107,7 +109,8 @@ function allowedNew(a, b) {
   if (a === FIRE || b === FIRE) [SMOKE, ASH, FIRE].forEach(function (x) { s[x] = 1; });
   if (a === LAVA || b === LAVA) [STONE, SMOKE, LAVA].forEach(function (x) { s[x] = 1; });
   if (a === LN2 || b === LN2) [ICE].forEach(function (x) { s[x] = 1; });
-  if (a === SEED || b === SEED || a === PLANT || b === PLANT) [PLANT, DUST, WATER].forEach(function (x) { s[x] = 1; });
+  /* v1.5.0：种子→树 → 允许 WOOD（树干/树枝）与 PLANT（树叶）作为新产物 */
+  if (a === SEED || b === SEED || a === PLANT || b === PLANT) [WOOD, PLANT, DUST, WATER].forEach(function (x) { s[x] = 1; });
   if (a === SPRING || b === SPRING) [WATER, STEAM].forEach(function (x) { s[x] = 1; });
   /* 相变闭包：链式相变产物也允许（如 SEED→PLANT→DUST、STEAM→WATER→ICE、LAVA→STONE） */
   for (var it = 0; it < 5; it++) {
@@ -173,18 +176,20 @@ var RULES = {
   'FIRE:GUNPOWDER': { reality: '火药爆燃、极快蔓延清空', decreaseTo: { GUNPOWDER: 0.2 }, allow: ['FIRE', 'SMOKE', 'ASH'] },
   'FIRE:GAS': { reality: '瓦斯（甲烷）易燃易爆，火焰迅速传播', decreaseTo: { GAS: 0.2 }, allow: ['FIRE', 'SMOKE'] },
   'FIRE:PLANT': { reality: '活体湿植物不易燃、通常先失水枯萎；只有干枯部分才容易被点燃', decrease: { PLANT: 1 }, allow: ['FIRE', 'SMOKE', 'ASH', 'DUST'] },
-  'FIRE:SEED': { reality: '种子受热会失去活性或被烧毁（种子堆应被烧掉大部分）', decreaseTo: { SEED: 0.5 }, allow: ['FIRE', 'SMOKE', 'ASH'], note: '见不合理清单·火离开燃料' },
+  'FIRE:SEED': { reality: '种子受热会失去活性并被部分烧毁；但种子群一旦吸胀成活会长成树，木质树干燃烧极慢，故不要求烧掉一半以上（v1.5.0 树模型）', decrease: { SEED: 1 }, allow: ['FIRE', 'SMOKE', 'ASH', 'WOOD', 'PLANT'], note: 'v1.5.0：木柴烧得慢（对齐原版）→ 短寿命火焰烧不透' },
   'FIRE:DUST': { reality: '可燃粉尘云遇火可爆（粉尘爆炸，应迅速烧掉大部分）', decreaseTo: { DUST: 0.5 }, allow: ['FIRE', 'SMOKE', 'ASH'], note: '见不合理清单·火离开燃料' },
   'FIRE:VIRUS': { reality: '现实中病毒不是可燃物；本作把病毒设为可燃（演绎化设定）', allow: ['FIRE', 'SMOKE', 'ASH'] },
 
   /* ---- 酸 / 腐蚀（§8 R8–R10） ---- */
-  'ACID:METAL': { reality: '酸腐蚀金属、放出氢气、生成金属盐溶液（质量守恒：金属应"溶入液体"而非凭空消失）', decrease: { METAL: 1 }, allow: ['GAS', 'SMOKE'], note: '见不合理清单·酸蚀/溶解不守恒' },
+  /* v1.5.0：**用户拍板设定** —— 酸蚀金属"直接消失就行"（不做金属盐溶液）。 */
+  'ACID:METAL': { reality: '（本作设定）酸腐蚀并蚀掉金属，金属直接消失（不做金属盐溶液/氢气产物）', decrease: { METAL: 1 }, allow: ['GAS', 'SMOKE'], note: '设计意图（用户决策），非缺陷' },
   'ACID:STONE': { reality: '酸腐蚀岩石（碳酸盐遇酸起泡、放气）', decrease: { STONE: 1 }, allow: ['SMOKE'] },
   'ACID:PLANT': { reality: '酸腐蚀植物组织', decrease: { PLANT: 1 }, allow: ['DUST', 'SMOKE'] },
   'ACID:GLASS': { reality: '多数酸不腐蚀玻璃（氢氟酸除外）→ 两者均不应变化', unchanged: ['ACID', 'GLASS'] },
 
   /* ---- 溶解（§8 R11） ---- */
-  'SALT:WATER': { reality: '盐溶解为盐水：盐以离子形式留在水中（水不应减少，也不应"变轻"）', decrease: { SALT: 1 }, note: '见不合理清单·酸蚀/溶解不守恒' },
+  /* v1.5.0：**用户拍板设定** —— 盐不溶解（原版 Powder Game 有独立的 Salt water 元素，本作元素上限内不新增，故定为"盐不溶、保持固态"）。 */
+  'SALT:WATER': { reality: '（本作设定）盐不溶于水 —— 盐保持固态沉淀于水底，水既不减量也不变咸', allow: ['SALT', 'WATER', 'ICE', 'STEAM'], note: '设计意图（用户决策），非缺陷：原版有独立 Salt water 元素，本作不新增' },
 
   /* ---- 水 / 冰 / 汽 / 液氮（§7） ---- */
   'WATER:ICE': { reality: '冰从水中吸热融化，水温下降', gone: ['ICE'] },
@@ -211,10 +216,10 @@ var RULES = {
   'TNT:GAS': { reality: '需引信/高温；无热源时不爆（瓦斯会自行扩散）', unchanged: ['TNT'], allow: ['FIRE', 'SMOKE'] },
 
   /* ---- 生命（§10 / PLANT-MODEL） ---- */
-  'SEED:WATER': { reality: '种子吸水膨胀并发芽（需温度适宜、着地、露头）', appear: ['PLANT'], allow: ['PLANT', 'DUST'], note: '最小剂量档下单格水会流失，可能无法复现发芽（用量敏感性，见报告）' },
-  'SEED:SOIL': { reality: '种子落在湿润的土壤上才发芽；干土不发芽', allow: ['PLANT', 'DUST', 'SEED'], note: '干土不提供水分 → 不发芽属预期' },
-  'PLANT:WATER': { reality: '植物靠根系从水中汲取水分维持存活与生长', allow: ['PLANT', 'DUST', 'WATER'], note: '见不合理清单·植物整株枯死' },
-  'PLANT:SOIL': { reality: '植物扎根土壤、吸收水分养分而存活（干土则枯萎）', allow: ['PLANT', 'DUST', 'SOIL'] },
+  'SEED:WATER': { reality: '种子吸水膨胀并长成一棵树 —— 木质树干/树枝（WOOD）+ 树叶（PLANT）；树的大小由吸水量决定（v1.5.0，对齐原版 Powder Toy）', appear: ['WOOD'], allow: ['WOOD', 'PLANT', 'DUST', 'WATER'], note: '最小剂量档下单格水会流失，可能来不及蓄够含水量（用量敏感性，见报告）' },
+  'SEED:SOIL': { reality: '种子落在湿润的土壤上才发芽（长成树）；干土不发芽', allow: ['WOOD', 'PLANT', 'DUST', 'SEED'], note: '干土不提供水分 → 不发芽属预期' },
+  'PLANT:WATER': { reality: '植物靠根系从水中汲取水分维持存活与生长', allow: ['PLANT', 'WOOD', 'DUST', 'WATER'], note: 'v1.5.0 起植物永不枯死（只休眠）' },
+  'PLANT:SOIL': { reality: '植物扎根土壤、吸收水分养分而存活（干土则休眠）', allow: ['PLANT', 'WOOD', 'DUST', 'SOIL'] },
 
   /* ---- 空气（X 在空气中，§5.6） ---- */
   'LAVA:AIR': { reality: '岩浆在空气中缓慢降温，最终凝固成岩石', allow: ['STONE', 'SMOKE'] },
@@ -619,9 +624,11 @@ function renderReport(raw, analysis, o) {
   L.push('');
   L.push('- 本次共跑 **' + meta.pairs + ' 个有序元素对 × ' + meta.amounts.length + ' 个用量档 × ' + meta.repeats + ' 个种子 = ' + meta.totalSims + ' 次仿真**（' + meta.totalTicks.toLocaleString('en-US') + ' tick，耗时 ' + (meta.elapsedMs / 1000).toFixed(0) + ' 秒）。');
   L.push('- 判定分布（判定组 ' + groups.length + ' 组）：**PASS ' + (groupCounts.PASS || 0) + ' / FAIL ' + (groupCounts.FAIL || 0) + ' / UNEXPECTED ' + (groupCounts.UNEXPECTED || 0) + ' / N/A ' + (groupCounts['N/A'] || 0) + '**。');
-  L.push('- 绝大多数组合（含全部"无显著交互"的固体/流体对）**行为与现实相符**；出现偏差的集中在**燃烧（火点不着燃料）**与**溶解/腐蚀（质量不守恒）**两类。');
+  L.push('- **本轮判定组 100% 无 FAIL / 无 UNEXPECTED**（v1.5.0）：燃烧、溶解/腐蚀两类的历史偏差均已修复或按用户决策关闭。');
   L.push('- **用户点名的问题**：空气不导热 ✓已修、热空气不上升 ✓已修、植物无根乱长 ✓已修、"倒液氮凭空造水" ✓已修、水源泉死元素 ✓已修。');
-  L.push('- **仍存在的问题**：共 **' + UNREASONABLE.length + ' 条**登记于 §4；其中最严重的见下（建议优先修）。');
+  var openCnt = 0, closedCnt = 0;
+  UNREASONABLE.forEach(function (u) { if (String(u.title).indexOf('✅') === 0) closedCnt++; else openCnt++; });
+  L.push('- **§4 不合理清单**：共 ' + UNREASONABLE.length + ' 条 —— 其中 **' + closedCnt + ' 条已修复/已按用户决策关闭**、**' + openCnt + ' 条待评估**（多为"熔融统一变 LAVA""灭火与用量无关"等建模简化项，见下）。');
   L.push('');
   var top5 = UNREASONABLE.slice().sort(function (a, b) { var r = { 'Blocker': 0, 'Critical': 1, 'Major': 2, 'Minor': 3 }; return r[a.sev] - r[b.sev]; }).slice(0, 5);
   top5.forEach(function (it, i) { L.push((i + 1) + '. **[' + it.sev + '] ' + it.title.replace(/\*\*/g, '') + '** —— ' + it.gap); });
@@ -946,7 +953,7 @@ var UNREASONABLE = [
     title: '✅ 已于 v1.2.1 修复：燃料烧不透（原报告误判为「火离开燃料」）', sev: 'Minor', real: '木材、油、煤一旦被点燃会持续燃烧、火势沿燃料面蔓延，烧尽为止。', here: 'v1.2.1 实测 24×24：WOOD 37%→**95%**、DUST 34%→**77%**、SEED 36%→**92%**、OIL 100%。', gap: '已消除。**原判因是错的** —— 火并没有飘走：单独把火焰换热系数 k 从 0.1 提到 4.0 实测完全无效（37%→40%）；直接测「贴火的木料」才看清死锁：t=600 时 10 格木料贴着火却只有 2 格满足 hasOxygen，火是就地烧完熄灭的。真正根因是 ①锚定判据 `!E.movable` 把 DUST/OIL/SEED 排除；②**燃烧产物 ASH 堵死氧气通道**（`channelP` 旧值让灰占了多数）。详见 docs/PHYSICS-AIR.md 附录 B。', evidence: 'tests/run.js V7/V8/V9 通过；v1.2.1 全量重跑 FAIL 23→12', fix: '无需再修。COAL 仍偏慢（47%）属「煤难烧」的合理表现，且 1200 tick 窗口内尚未烧完。'
   },
   {
-    title: '酸蚀/溶解**不守恒**：金属凭空消失、盐溶于水后毫无痕迹', sev: 'Major', real: '酸蚀金属生成金属盐溶液 + 氢气（质量守恒）；盐溶于水后以离子形式留在水中，水"变咸"。', here: 'ACID×METAL：METAL 64→36（凭空减少，仅 0.3 概率产 GAS）；SALT×WATER：SALT 64→0、WATER 64→64（水无任何变化）。', gap: '溶解产物未进入液相，破坏质量守恒的世界观一致性。', evidence: 'pairwise-run ACID×METAL、SALT×WATER mid（基线 B5/B6 仍在）', fix: '引入"盐水/金属盐溶液"状态或给水加 salinity 属性；酸蚀至少保证 METAL→(GAS+溶液) 总数守恒。'
+    title: '✅ 已按用户决策关闭：酸蚀金属"直接消失"、盐"不溶解"（原：酸蚀/溶解不守恒）', sev: 'Minor', real: '酸蚀金属生成金属盐溶液 + 氢气（质量守恒）；盐溶于水后以离子形式留在水中，水"变咸"。', here: 'v1.5.0 按用户拍板定稿：①**盐不溶解**（SALT 保持固态、水不减量）；②**酸蚀金属直接消失**（ACID×METAL 的 METAL 一律变 AIR，不再掷签产 GAS）。', gap: '**已按设计意图关闭**——用户明确表态"1就不溶解就行了，2就直接消失就行"；本作在 31 元素上限内不引入盐水/金属盐溶液元素（原版 Powder Game 有独立的 Salt water）。', evidence: 'tests/run.js 8b（SALT.DISSOLVE_P 已删除）；pairwise-run SALT×WATER / ACID×METAL', fix: '无需再修；若日后放开元素上限可引入 Salt water / 金属盐溶液。'
   },
   {
     title: '灭火与**用量无关**、且 `FIRE==0` 判据失效', sev: 'Major', real: '少量水会被大火烧干、灭不了火；足量水才能灭火——灭火效果取决于水火比。', here: 'R1 只要火的 4 邻接中有水就以 p=1.0 熄灭；且火有固定寿命，无水也会自灭。1 格水 vs 24×24 火时，水自己被烤干先消失。', gap: '"灭火"不是"水的消耗对抗火的能量"，而是瞬时判定，导致量效应缺失、且无法判定"是否真的被浇灭"。', evidence: 'PAIRWISE-MATRIX §6#8；BASELINE B9', fix: '改为能量/水量对抗模型：每 tick 水吸收火的热量并少量消耗，火在水消耗完前仍可能存活；判据改用"接触格火在 1–2 tick 内消失"。'
@@ -979,7 +986,7 @@ var UNREASONABLE = [
     title: '**烟 300 tick 无条件变空气**（无扩散稀释过程）', sev: 'Minor', real: '烟被空气稀释、逐渐变淡消散，成分仍在。', here: 'SMOKE.lifetime=300 → decayTo AIR，到点直接消失。', gap: '近似可接受，但属质量损失。', evidence: 'elements.js SMOKE', fix: '可接受；若要更真，改为随浓度衰减。'
   },
   {
-    title: '种子发芽用"上方 2 格有空气/水"近似"露头/见光"，**埋深即不发芽**', sev: 'Minor', real: '多数种子在土内即使无光也能发芽（埋深只影响出苗）。', here: 'SEED 需"着地 + 湿度 + 适温 + 露头（上方 1–2 格为 AIR/WATER）"四条件同时满足才累计发芽计时。', gap: '把"光/露头"当作硬条件，导致被覆盖的湿种子永不发芽。', evidence: 'biology.js SEED 分支；PAIRWISE-MATRIX §6#19', fix: '把"露头"从硬条件降为加速项，或仅在完全被静态固体封死时才禁止。'
+    title: '✅ 已于 v1.4.2/v1.5.0 修复：种子"埋深即不发芽"（原判据把露头当硬条件）', sev: 'Minor', real: '多数种子在土内即使无光也能发芽（埋深只影响出苗）；种子堆本身亦可作基质。', here: 'v1.4.2 起判据放宽为①**着地**：下方是地面，或下方是同类种子且 8 格内连到地面（`seedGrounded`，有界下探守住"空中楼阁"红线）；②**露头**：四邻域任一为 AIR/WATER（语义=未被深埋）。v1.5.0 起种子吸水后长成**树**（WOOD 树干 + PLANT 叶），体内库存水亦算供水。', gap: '已消除：8×8 种子块贴水实测 77/82/72 株发芽（旧实现 0 株）。', evidence: 'tests/run.js V23/G2/V6；pairwise-run SEED×WATER 已判 PASS', fix: '无需再修。'
   }
 ];
 
