@@ -560,7 +560,8 @@ test('12b. 水源泉活体上限：世界满水时暂停、排空后自动恢复
    * 新模型改为「持续产出 + 活体上限 LIVE_MAX」——世界里 WATER 达上限时暂停，降回后自动恢复。
    * 本测试直接构造「世界已满水」的初态（比自然灌满快得多），验证：
    *   ① springCreated 单调不减（累计统计保留）；
-   *   ② WATER 格数全程 ≤ LIVE_MAX；
+   *   ② **SPRING 自身喷发**使 WATER 全程 ≤ LIVE_MAX（本场景只有一座 SPRING、无其它水源，
+   *      故该口径成立；"非 SPRING 水源可令 WATER 超过 LIVE_MAX"由 V32 单独覆盖）；
    *   ③ 满水时水源泉暂停、排掉一部分水后**自动恢复**产出（这正是旧模型做不到的）。 */
   var LIVE = YS.Balance.SPRING.LIVE_MAX;
   assert(LIVE === 6000, 'SPRING.LIVE_MAX 应为 6000（实测标定，见 docs/SPRING-MODEL.md）');
@@ -578,7 +579,7 @@ test('12b. 水源泉活体上限：世界满水时暂停、排空后自动恢复
     if (count(g, E.WATER) > LIVE) capped = false;
   }
   assert(mono, 'springCreated 应单调不减');
-  assert(capped, 'WATER 格数不应超过 LIVE_MAX');
+  assert(capped, '本场景（仅 SPRING 一座水源）WATER 不应超过 LIVE_MAX —— 即 SPRING 自身喷发不越界');
   assert(eng.springCreated === 0, '满水时水源泉应暂停（springCreated 应为 0），实得 ' + eng.springCreated);
   /* 排掉 300 格水 → 应自动恢复产出（旧模型下会永久停喷） */
   var removed = 0;
@@ -591,7 +592,7 @@ test('12b. 水源泉活体上限：世界满水时暂停、排空后自动恢复
   for (var t2 = 0; t2 < 300; t2++) eng.step();
   assert(eng.springCreated > before, '排空后水源泉应自动恢复产出（非永久停喷），实得 +' +
     (eng.springCreated - before));
-  assert(count(g, E.WATER) <= LIVE, '恢复产出后 WATER 仍不应超过 LIVE_MAX，实得 ' + count(g, E.WATER));
+  assert(count(g, E.WATER) <= LIVE, '恢复产出后 SPRING 自身喷发仍不使 WATER 超过 LIVE_MAX，实得 ' + count(g, E.WATER));
 });
 
 test('13. 高温蒸汽（300°C）700 tick 不得冷凝为水（§7.2 T≥100 恒不冷凝）', function () {
@@ -1548,12 +1549,15 @@ test('V25. ★热交换闭环：蒸汽加热空气 → 凝结高度抬升 → �
 /* ============================================================
    V26 — v1.6.1：水源泉「持续产出 + 活体上限」长跑（Phase 1）
    ============================================================ */
-test('V26. ★水源泉长跑 20000 tick：持久出水不永久停 + WATER ≤ LIVE_MAX（v1.6.1）', function () {
+test('V26. ★水源泉长跑 20000 tick：持久出水不永久停 + SPRING 自身喷发不越界（v1.6.1）', function () {
   /* 用户原话：「水源泉等方块，只会给一会儿水，根本不持久。」
    * 旧模型：累计配额 1500 格 → 单水源泉约 9000 tick（1500 × EMIT_INTERVAL=6）就产满、
    * 之后**永久停喷**，窗口 4/5 产出为 0。新模型（活体上限 LIVE_MAX=6000）下，
    * 只要未达上限就持续产出 —— 单水源泉 20000 tick 累计约 3333 格（< 6000，不触发上限），
    * 因此每个窗口都应有产出。
+   *
+   * 范围分工：本测试只管「持续产出 + **SPRING 自身喷发**不越界」（单泉场景、无其它水源）；
+   * 「非 SPRING 水源（融冰/冷凝）可令 WATER 超过 LIVE_MAX、但会让泉更久暂停」由 V32 覆盖。
    *
    * 实测（64×64、单水源泉、本机 Node）：20000 tick 用时约 **11.4 s**；
    * 分窗口产出（每 4000 tick）= 666 / 667 / 667 / 666 / 667；末态 WATER=3333（≤ LIVE_MAX）。
@@ -1569,7 +1573,7 @@ test('V26. ★水源泉长跑 20000 tick：持久出水不永久停 + WATER ≤ 
   assert(windows[3] > 0 && windows[4] > 0,
     '第 4/5 个窗口仍应有产出（不永久停喷），实得 [' + windows.join(', ') + ']');
   assert(count(g, E.WATER) <= YS.Balance.SPRING.LIVE_MAX,
-    'WATER 不应超过 LIVE_MAX，实得 ' + count(g, E.WATER));
+    '本场景（仅 SPRING）WATER 不应超过 LIVE_MAX —— SPRING 自身喷发不越界，实得 ' + count(g, E.WATER));
   assert(eng.springCreated >= 3000, '20000 tick 累计产出应达数千格，实得 ' + eng.springCreated);
 });
 
@@ -1769,6 +1773,60 @@ test('V31. 压强系统：WALL（墙）免疫变形（v1.6.1）', function () {
   assert(!r.first, 'WALL 不应屈服，实得 (' + (r.first && r.first.x + ',' + r.first.y) + ')');
   assert(r.b1.c === r.b0.c, 'WALL 格数不应变化（' + r.b0.c + '→' + r.b1.c + '）');
   assert(r.b1.w === r.b0.w && r.b1.h === r.b0.h, 'WALL 外框尺寸不应变化');
+});
+
+/* ============================================================
+   V32 — v1.6.1：非 SPRING 水源可令世界 WATER 超过 LIVE_MAX（但 SPRING 自身不越界）
+   ============================================================ */
+test('V32. ★非 SPRING 水源（融冰）可使 WATER 超过 LIVE_MAX，但 SPRING 自身喷发从不越界（v1.6.1）', function () {
+  /* 与 V26 的分工：
+   *   - V26 管「持续产出 + **SPRING 自身喷发**不越界」（单泉场景，世界里没有其它水源）；
+   *   - V32 管「**非 SPRING 水源**（融冰/融雪/蒸汽冷凝）不受喷发闸门约束、可以令世界 WATER
+   *     超过 LIVE_MAX，但会被低频扫描计入 → 让 SPRING 暂停更久；排空到阈值以下后 SPRING 自动恢复」。
+   * 为什么物理水源不该被节流：ICE→WATER 等是**相变**，不是"水源泉喷发"；节流它们等于篡改物理。
+   * 复现 QA 场景（`_qa_f1.js` F1-B）：120×80、预填 LIVE_MAX=6000 格水使泉暂停，再注入
+   * 80 格 60°C 高温 ICE（**非 SPRING 水源**）→ 融冰后 WATER 达峰值 6080 > 6000。
+   * 实测（本机 Node/V8，seed 1337，短窗口：注入后仅跑 200 tick）：
+   *   越界峰值 6080（首现 t=12）、融冰后 ICE 残留=0、期间 SPRING 自身新增=0、
+   *   排掉 300 格水后 300 tick SPRING 恢复 +≈49；本测试总耗时 ≈1 s（本机实测 0.95–1.07 s，随负载波动）。 */
+  var LIVE = YS.Balance.SPRING.LIVE_MAX;
+  var eng = Engine.create({ w: 120, h: 80, seed: 1337 }), g = eng.grid;
+  /* 预填 LIVE_MAX 格水（50 行 × 120 列 = 6000）→ 低频扫描确认"已满"，水源泉暂停 */
+  var filled = 0;
+  for (var y = 30; y < 80; y++) for (var x = 0; x < 120; x++) { g.setEl(x, y, E.WATER); filled++; }
+  assert(filled === LIVE, '预填水应恰为 LIVE_MAX 格，实得 ' + filled);
+  g.setEl(60, 2, E.SPRING);
+  for (var t = 0; t < 35; t++) eng.step();
+  assert(eng.springCreated === 0, '满水时水源泉应先暂停（springCreated=0），实得 ' + eng.springCreated);
+  var base = eng.springCreated;
+  /* 注入 80 格 60°C 高温 ICE（**非 SPRING 水源**）：会被物理融化成水，不受喷发闸门约束 */
+  var ice = 0;
+  for (var yy = 26; yy < 30; yy++) for (var xx = 20; xx < 40; xx++) { g.setEl(xx, yy, E.ICE, 60); ice++; }
+  var maxW = 0, firstOver = -1;
+  for (var t2 = 0; t2 < 200; t2++) {
+    eng.step();
+    var w = count(g, E.WATER);
+    if (w > maxW) maxW = w;
+    if (w > LIVE && firstOver < 0) firstOver = t2 + 1;
+  }
+  /* ① 物理水源不被节流 → WATER 可以超过 LIVE_MAX（属预期，不是缺陷） */
+  assert(firstOver > 0, '融冰应在若干 tick 内令 WATER 超过 LIVE_MAX（物理水源不被节流），实得未越界、峰值 ' + maxW);
+  assert(maxW > LIVE, 'WATER 峰值应超过 LIVE_MAX（证明非 SPRING 水源不被闸门约束），实得 ' + maxW + ' vs ' + LIVE);
+  assert(count(g, E.ICE) === 0, '注入的 ' + ice + ' 格高温冰应全部融化（否则前提不成立），残留 ' + count(g, E.ICE));
+  /* ② 同一时段 SPRING 自身新增产出 = 0（泉全程暂停） */
+  assert(eng.springCreated === base, '期间 SPRING 自身新增应为 0（泉被满水闸门暂停），实得 +' +
+    (eng.springCreated - base));
+  /* ③ 排空到阈值以下 → SPRING 自动恢复喷发（新增 > 0） */
+  var removed = 0;
+  for (var y2 = 30; y2 < 80 && removed < 300; y2++) for (var x2 = 0; x2 < 120 && removed < 300; x2++) {
+    var ii = g.idx(x2, y2);
+    if (g.element[ii] === E.WATER) { g.element[ii] = 1; g.temp[ii] = 20; removed++; }
+  }
+  assert(removed === 300, '应移除 300 格水以降到阈值以下，实得 ' + removed);
+  var before = eng.springCreated;
+  for (var t3 = 0; t3 < 300; t3++) eng.step();
+  assert(eng.springCreated > before, '排空到阈值以下后水源泉应自动恢复喷发（新增 > 0），实得 +' +
+    (eng.springCreated - before));
 });
 
 /* ============================================================

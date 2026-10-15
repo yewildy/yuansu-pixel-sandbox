@@ -493,9 +493,9 @@ $p = \operatorname{clamp}\bigl(0.0005\,(T+196),\ 0,\ 0.50\bigr)$：−196 °C �
 | R18 | GAS + FIRE | 4 邻接 | GAS→FIRE（连锁） | 设为 540 | $p=0.40$（同 R6） |
 | **S-ACID**（新增） | ACID + PLANT | 4 邻接 | PLANT → DUST（枯萎） | 无 | $p = \texttt{ACID.ETCH\_PLANT\_P}=0.02$ |
 | **S-LAVA**（新增） | LAVA + PLANT | 4 邻接 | PLANT → FIRE；LAVA → STONE | 剧烈放热 | $p = \texttt{LAVA.IGNITE\_PLANT\_P}=1.0$ |
-| **R19 Ω**（v1.1.0 已实现） | SPRING（水源泉） | 每 `SPRING.EMIT_INTERVAL` tick | 向一个相邻 `AIR` 格生成 `WATER`（20 °C） | 无 | $p=1.0$（受全局配额约束） |
+| **R19 Ω**（v1.1.0 已实现） | SPRING（水源泉） | 每 `SPRING.EMIT_INTERVAL` tick | 向一个相邻 `AIR` 格生成 `WATER`（20 °C） | 无 | $p=1.0$（受**活体上限**约束，非累计配额） |
 
-> **R19 Ω（水源泉出水）—— 已实现**：`src/core/reactions.js` 的 `reactionPass` 每 `SPRING.EMIT_INTERVAL = 6` tick，向一个相邻 `AIR` 格（优先向下，其次左右、上）写入 `WATER`（温度 20 °C）。**v1.6.1 起改为「持续产出 + 活体上限」**：只要 `SPRING` 自身还在场就持续出水，仅当世界里 `WATER` 总数达 `SPRING.LIVE_MAX = 6000` 时**暂停**、降回阈值以下**自动恢复**（旧模型的"累计产满 1500 即永久停喷"已废弃，见 `docs/SPRING-MODEL.md`）；`SPRING` 自身**不移动、不消耗**。这是与 `CLONE`（R14）并列的**质量创生例外**（§13.2），图鉴/清单标「∞」。计数器 `engine.springCreated` 跨 tick 累加（累计统计，不再参与停喷判定）。
+> **R19 Ω（水源泉出水）—— 已实现**：`src/core/reactions.js` 的 `reactionPass` 每 `SPRING.EMIT_INTERVAL = 6` tick，向一个相邻 `AIR` 格（优先向下，其次左右、上）写入 `WATER`（温度 20 °C）。**v1.6.1 起改为「持续产出 + 活体上限」**：只要 `SPRING` 自身还在场就持续出水，仅当 **`SPRING` 自身喷发**累计使 `WATER` 达 `SPRING.LIVE_MAX = 6000` 时**暂停**、降回阈值以下**自动恢复**（其他水源如融冰/蒸汽冷凝不受此闸门约束，但会计入并让泉暂停更久）（旧模型的"累计产满 1500 即永久停喷"已废弃，见 `docs/SPRING-MODEL.md`）；`SPRING` 自身**不移动、不消耗**。这是与 `CLONE`（R14）并列的**质量创生例外**（§13.2），图鉴/清单标「∞」。计数器 `engine.springCreated` 跨 tick 累加（累计统计，不再参与停喷判定）。
 >
 > **反应优先级仲裁**（同格多条件时，高优先者先执行，见 §15.4）：爆炸 > 灭火 > 燃烧 > 腐蚀 > 溶解 > 克隆/病毒/**水源泉** > 相变。
 
@@ -684,7 +684,7 @@ $$p_{adv} = \sigma \times \texttt{windFactor}$$
 | 元素 | 规则 | 约束 |
 |---|---|---|
 | **CLONE 克隆体** | 每 `CLONE_COPY_INTERVAL = 4` tick，把 8 邻域中**一个**非静态元素复制到 `CLONE` 旁的一个 `AIR` 格 | **活体上限** `CLONE.LIVE_MAX = 5000`（世界里可移动格数达上限时暂停、降回后自动恢复）；v1.6.1 起持续复制，不再有累计配额 |
-| **SPRING 水源泉** ✅**已实现** | 每 `SPRING.EMIT_INTERVAL = 6` tick，向一个相邻 `AIR` 格生成 `WATER`（20 °C） | **活体上限** `SPRING.LIVE_MAX = 6000`（世界里 `WATER` 总数达上限时暂停、降回后自动恢复）；`SPRING` 自身不移动、不消耗 |
+| **SPRING 水源泉** ✅**已实现** | 每 `SPRING.EMIT_INTERVAL = 6` tick，向一个相邻 `AIR` 格生成 `WATER`（20 °C） | **活体上限** `SPRING.LIVE_MAX = 6000`（**SPRING 自身喷发**累计使 `WATER` 达 `LIVE_MAX` 时暂停、降回后自动恢复；其他水源不受此闸门约束）；`SPRING` 自身不移动、不消耗 |
 
 > 这两个是「无限资源」的**有意设计**（`DESIGN.md` 支柱 2 涌现玩法）。**v1.6.1**：改用**活体上限（live cap）**防止画面爆炸与性能崩溃 —— 旧模型的**累计配额**（产满即永久停喷）把"持续水源"退化成"一次性定量水源"（用户实测「只会给一会儿水」），已废弃。详见 `docs/SPRING-MODEL.md`。此外 §9.6 耗氧使物质可 +1（空气→烟），已在 §13.1 记账。
 >
@@ -824,7 +824,7 @@ $$p_{adv} = \sigma \times \texttt{windFactor}$$
 | `CLONE.COPY_INTERVAL` | 4 | 1–60 | tick | 克隆周期 |
 | `CLONE.LIVE_MAX` | 5000 | 100–20000 | 格 | 克隆体「活体上限」（v1.6.1：世界里可移动格数上限） |
 | `SPRING.EMIT_INTERVAL` | 6 | 1–60 | tick | 源泉出水周期 |
-| `SPRING.LIVE_MAX` | 6000 | 100–20000 | 格 | 水源泉「活体上限」（v1.6.1：世界里 WATER 总数上限） |
+| `SPRING.LIVE_MAX` | 6000 | 100–20000 | 格 | 水源泉「活体上限」（v1.6.1：**SPRING 喷发**的水量上限） |
 | `WIND.MAX_STRENGTH` | 1.0 | 0–1 | — | 最大风强度 |
 | `WIND.CONVECT_T_BOOST` | 0.3 | 0–1 | /tick | 热对流上升加成（**兼容保留；已被 §5.4 airPass 取代**） |
 | `WIND.CONVECT_T_THRESH` | 200 | 50–600 | °C | 触发对流温度（兼容保留） |

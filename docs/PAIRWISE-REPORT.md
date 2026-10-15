@@ -18,11 +18,11 @@
 | 每组 tick 数 | 1200（= 20.0 游戏秒） |
 | 仿真总次数 | **5400** |
 | 仿真总 tick 数 | **6,480,000** |
-| 实际耗时 | **1028.5 s**（≈ 5 次仿真/秒） |
+| 实际耗时 | **1065.8 s**（≈ 5 次仿真/秒） |
 | 采样密度 | full（早期 60 tick + 每 30 tick） |
 | 随机种子 | 1337 / 2（引擎全程确定性，换种子 = 换逐格随机采样） |
 | 运行环境 | Node v22.22.2 / win32 |
-| 生成时间 | 2026-10-15T09:17:38.374Z |
+| 生成时间 | 2026-10-15T10:50:51.415Z |
 
 **网格尺寸（每档）**：
 
@@ -45,9 +45,9 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 
 ## 0.5 结论速览（TL;DR）
 
-- 本次共跑 **900 个有序元素对 × 3 个用量档 × 2 个种子 = 5400 次仿真**（6,480,000 tick，耗时 1028 秒）。
+- 本次共跑 **900 个有序元素对 × 3 个用量档 × 2 个种子 = 5400 次仿真**（6,480,000 tick，耗时 1066 秒）。
 - 判定分布（判定组 2700 组）：**PASS 2229 / FAIL 0 / UNEXPECTED 0 / N/A 471**。
-- **本轮判定组 100% 无 FAIL / 无 UNEXPECTED**（v1.6.0 复跑）：燃烧、溶解/腐蚀、蒸汽相变（含潜热预算与气-气换热）均无回归。
+- **本轮判定组 100% 无 FAIL / 无 UNEXPECTED**（v1.6.1 复跑）：燃烧、溶解/腐蚀、蒸汽相变、压强/气流新增均无回归。
 - **用户点名的问题**：空气不导热 ✓已修、热空气不上升 ✓已修、植物无根乱长 ✓已修、"倒液氮凭空造水" ✓已修、水源泉死元素 ✓已修。
 - **§4 不合理清单**：共 15 条 —— 其中 **4 条已修复/已按用户决策关闭**、**11 条待评估**（多为"熔融统一变 LAVA""灭火与用量无关"等建模简化项，见下）。
 
@@ -1385,8 +1385,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | LN2 × GAS | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 LN2=64 GAS=64 → 结束 AIR=1488 WALL=48；中途曾现: LN2,GAS；新: 无；消失: LN2,GAS；Tmax 20.0°C | **PASS** |  |
 | LN2 × GAS | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 LN2=576 GAS=576 → 结束 AIR=2808 WALL=72；中途曾现: LN2,GAS；新: 无；消失: LN2,GAS；Tmax 20.0°C | **PASS** |  |
 | LN2 × CLONE | small | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1486 WALL=48 LN2=1 CLONE=1 → 结束 AIR=1487 WALL=48 CLONE=1；中途曾现: LN2,CLONE；新: 无；消失: LN2；Tmax 20.0°C | **PASS** |  |
-| LN2 × CLONE | mid | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1360 WALL=48 LN2=64 CLONE=64 → 结束 AIR=1424 WALL=48 CLONE=64；中途曾现: LN2,CLONE；新: 无；消失: LN2；Tmax 20.0°C | **PASS** |  |
-| LN2 × CLONE | large | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1656 WALL=72 LN2=576 CLONE=576 → 结束 AIR=2232 WALL=72 CLONE=576；中途曾现: LN2,CLONE；新: 无；消失: LN2；Tmax 20.0°C | **PASS** |  |
+| LN2 × CLONE | mid | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1360 WALL=48 LN2=64 CLONE=64 → 结束 AIR=1384 WALL=48 LN2=40 CLONE=64；中途曾现: LN2,CLONE；新: 无；消失: LN2；Tmax 20.0°C | **PASS** |  |
+| LN2 × CLONE | large | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1656 WALL=72 LN2=576 CLONE=576 → 结束 AIR=2151 WALL=72 LN2=81 CLONE=576；中途曾现: LN2,CLONE；新: 无；消失: 无；Tmax 20.0°C | **PASS** |  |
 | LN2 × VIRUS | small | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1486 WALL=48 LN2=1 VIRUS=1 → 结束 AIR=1487 WALL=48 VIRUS=1；中途曾现: LN2,VIRUS；新: 无；消失: LN2；Tmax 20.0°C | **PASS** |  |
 | LN2 × VIRUS | mid | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1360 WALL=48 LN2=64 VIRUS=64 → 结束 AIR=1424 WALL=48 VIRUS=64；中途曾现: LN2,VIRUS；新: 无；消失: LN2；Tmax 20.0°C | **PASS** |  |
 | LN2 × VIRUS | large | 热源或冷源相邻：仅有热传导（可能引发相变），无化学变化 | 起始 AIR=1656 WALL=72 LN2=576 VIRUS=576 → 结束 AIR=2232 WALL=72 VIRUS=576；中途曾现: LN2,VIRUS；新: 无；消失: LN2；Tmax 20.0°C | **PASS** |  |
@@ -1431,7 +1431,7 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | SMOKE × GAS | large | 气体与物质相邻：气体上浮/穿过/随风飘散，无化学变化 | 起始 AIR=1656 WALL=72 SMOKE=576 GAS=576 → 结束 AIR=2808 WALL=72；中途曾现: SMOKE,GAS；新: 无；消失: SMOKE,GAS；Tmax 20.0°C | **PASS** |  |
 | SMOKE × CLONE | small | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1486 WALL=48 SMOKE=1 CLONE=1 → 结束 AIR=1487 WALL=48 CLONE=1；中途曾现: SMOKE,CLONE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | SMOKE × CLONE | mid | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1360 WALL=48 SMOKE=64 CLONE=64 → 结束 AIR=1424 WALL=48 CLONE=64；中途曾现: SMOKE,CLONE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
-| SMOKE × CLONE | large | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1656 WALL=72 SMOKE=576 CLONE=576 → 结束 AIR=2232 WALL=72 CLONE=576；中途曾现: SMOKE,CLONE；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
+| SMOKE × CLONE | large | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1656 WALL=72 SMOKE=576 CLONE=576 → 结束 AIR=2059 WALL=72 SMOKE=173 CLONE=576；中途曾现: SMOKE,CLONE；新: 无；消失: 无；Tmax 20.0°C | **PASS** |  |
 | SMOKE × VIRUS | small | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1486 WALL=48 SMOKE=1 VIRUS=1 → 结束 AIR=1487 WALL=48 VIRUS=1；中途曾现: SMOKE,VIRUS；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | SMOKE × VIRUS | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 SMOKE=64 VIRUS=64 → 结束 AIR=1424 WALL=48 VIRUS=64；中途曾现: SMOKE,VIRUS；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
 | SMOKE × VIRUS | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 SMOKE=576 VIRUS=576 → 结束 AIR=2232 WALL=72 VIRUS=576；中途曾现: SMOKE,VIRUS；新: 无；消失: SMOKE；Tmax 20.0°C | **PASS** |  |
@@ -1449,7 +1449,7 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | FIRE × GAS | large | 瓦斯（甲烷）易燃易爆，火焰迅速传播 | 起始 AIR=1656 WALL=72 FIRE=576 GAS=576 → 结束 AIR=2235 WALL=72 ASH=573；中途曾现: ASH,SMOKE,FIRE,GAS；新: ASH；消失: FIRE,GAS；Tmax 215.2°C | **PASS** |  |
 | FIRE × CLONE | small | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1486 WALL=48 FIRE=1 CLONE=1 → 结束 AIR=1487 WALL=48 CLONE=1；中途曾现: FIRE,CLONE；新: 无；消失: FIRE；Tmax 24.2°C | **PASS** |  |
 | FIRE × CLONE | mid | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1360 WALL=48 FIRE=64 CLONE=64 → 结束 AIR=1424 WALL=48 CLONE=64；中途曾现: SMOKE,FIRE,CLONE；新: 无；消失: FIRE；Tmax 142.9°C | **PASS** |  |
-| FIRE × CLONE | large | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1656 WALL=72 FIRE=576 CLONE=576 → 结束 AIR=2232 WALL=72 CLONE=576；中途曾现: SMOKE,FIRE,CLONE；新: 无；消失: FIRE；Tmax 191.9°C | **PASS** |  |
+| FIRE × CLONE | large | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1656 WALL=72 FIRE=576 CLONE=576 → 结束 AIR=2021 WALL=72 SMOKE=211 CLONE=576；中途曾现: SMOKE,FIRE,CLONE；新: SMOKE；消失: FIRE；Tmax 184.4°C | **PASS** |  |
 | FIRE × VIRUS | small | 现实中病毒不是可燃物；本作把病毒设为可燃（演绎化设定） | 起始 AIR=1486 WALL=48 FIRE=1 VIRUS=1 → 结束 AIR=1488 WALL=48；中途曾现: SMOKE,FIRE,VIRUS；新: 无；消失: FIRE,VIRUS；Tmax 45.9°C | **PASS** |  |
 | FIRE × VIRUS | mid | 现实中病毒不是可燃物；本作把病毒设为可燃（演绎化设定） | 起始 AIR=1360 WALL=48 FIRE=64 VIRUS=64 → 结束 AIR=1485 WALL=48 ASH=3；中途曾现: ASH,SMOKE,FIRE,VIRUS；新: ASH；消失: FIRE,VIRUS；Tmax 134.4°C | **PASS** |  |
 | FIRE × VIRUS | large | 现实中病毒不是可燃物；本作把病毒设为可燃（演绎化设定） | 起始 AIR=1656 WALL=72 FIRE=576 VIRUS=576 → 结束 AIR=2641 WALL=72 ASH=48 VIRUS=119；中途曾现: ASH,SMOKE,FIRE,VIRUS；新: ASH；消失: FIRE；Tmax 208.4°C | **PASS** |  |
@@ -1464,7 +1464,7 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | GAS × GAS | large | 同种物质相邻：自然堆叠/流动/相变，无化学变化 | 起始 AIR=2232 WALL=72 GAS=576 → 结束 AIR=2808 WALL=72；中途曾现: GAS；新: 无；消失: GAS；Tmax 20.0°C | **N/A** |  |
 | GAS × CLONE | small | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1486 WALL=48 GAS=1 CLONE=1 → 结束 AIR=1487 WALL=48 CLONE=1；中途曾现: GAS,CLONE；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | GAS × CLONE | mid | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1360 WALL=48 GAS=64 CLONE=64 → 结束 AIR=1424 WALL=48 CLONE=64；中途曾现: GAS,CLONE；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
-| GAS × CLONE | large | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1656 WALL=72 GAS=576 CLONE=576 → 结束 AIR=2232 WALL=72 CLONE=576；中途曾现: GAS,CLONE；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
+| GAS × CLONE | large | （科幻机制）克隆体复制相邻的可移动物质；目标为气体/易相变物质，数量受逸出与相变干扰，不单独判数量 | 起始 AIR=1656 WALL=72 GAS=576 CLONE=576 → 结束 AIR=2017 WALL=72 GAS=215 CLONE=576；中途曾现: GAS,CLONE；新: 无；消失: 无；Tmax 20.0°C | **PASS** |  |
 | GAS × VIRUS | small | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1486 WALL=48 GAS=1 VIRUS=1 → 结束 AIR=1487 WALL=48 VIRUS=1；中途曾现: GAS,VIRUS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | GAS × VIRUS | mid | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1360 WALL=48 GAS=64 VIRUS=64 → 结束 AIR=1424 WALL=48 VIRUS=64；中途曾现: GAS,VIRUS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
 | GAS × VIRUS | large | 流体/粉末与静态固体相邻：被阻挡、绕流、堆积，无化学变化 | 起始 AIR=1656 WALL=72 GAS=576 VIRUS=576 → 结束 AIR=2232 WALL=72 VIRUS=576；中途曾现: GAS,VIRUS；新: 无；消失: GAS；Tmax 20.0°C | **PASS** |  |
@@ -1511,7 +1511,7 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 
 对每个组合，比较三个用量档的"判定 + 产物集合 + 双方是否幸存"签名。
 
-### 3.1 结果**随用量改变**的组合（66 个）——这些最符合直觉："量多少不一样"
+### 3.1 结果**随用量改变**的组合（69 个）——这些最符合直觉："量多少不一样"
 
 | 组合 | 少量 (1×1) | 中等 (8×8) | 大量 (24×24) | 类别 |
 |---|---|---|---|---|
@@ -1574,14 +1574,14 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | ACID × FIRE | PASS；活: ACID | PASS；活: ACID | PASS；活: ACID | THERMAL |
 | LN2 × STEAM | PASS；活: 全灭 | PASS；活: 全灭 | PASS；活: 全灭 | THERMAL |
 | LN2 × FIRE | PASS；活: 全灭 | PASS；活: 全灭 | PASS；活: 全灭 | THERMAL |
-| LN2 × SPRING | PASS；活: SPRING | PASS；活: SPRING | PASS；活: SPRING | THERMAL |
+| LN2 × CLONE | PASS；活: CLONE | PASS；活: LN2+CLONE | PASS；活: LN2+CLONE | REACTION |
 
-（仅列出前 60 个，共 66 个）
+（仅列出前 60 个，共 69 个）
 
 ### 3.2 结果**不随用量改变**的组合
 
-- 全部不变量组合：**399** 个（绝大多数为"无显著交互"类别，符合预期）。
-- 其中属于 **REACTION / PHASE** 类别却"量多少都一样"的：**28** 个 —— 这类**值得重点复核**（反应类组合本应随剂量变化）：
+- 全部不变量组合：**396** 个（绝大多数为"无显著交互"类别，符合预期）。
+- 其中属于 **REACTION / PHASE** 类别却"量多少都一样"的：**25** 个 —— 这类**值得重点复核**（反应类组合本应随剂量变化）：
 
 | 组合 | 类别 | 三档共同结果 |
 |---|---|---|
@@ -1607,11 +1607,8 @@ node tests/pairwise-run.js --report   # 读 raw JSON，生成本报告
 | WATER × CLONE | REACTION | PASS；起始 AIR=1360 WALL=48 WATER=64 CLONE=64 → 结束 AIR=1072 WALL=48 WATER=352 CLONE=64；中途曾现: WATER… |
 | OIL × CLONE | REACTION | PASS；起始 AIR=1360 WALL=48 OIL=64 CLONE=64 → 结束 AIR=1056 WALL=48 OIL=368 CLONE=64；中途曾现: OIL,CLONE… |
 | ACID × CLONE | REACTION | PASS；起始 AIR=1360 WALL=48 ACID=64 CLONE=64 → 结束 AIR=1057 WALL=48 ACID=367 CLONE=64；中途曾现: ACID,CL… |
-| LN2 × CLONE | REACTION | PASS；起始 AIR=1360 WALL=48 LN2=64 CLONE=64 → 结束 AIR=1424 WALL=48 CLONE=64；中途曾现: LN2,CLONE；新: 无；消失… |
 | STEAM × CLONE | REACTION | PASS；起始 AIR=1360 WALL=48 STEAM=64 CLONE=64 → 结束 AIR=1068 WALL=48 WATER=356 CLONE=64；中途曾现: WATER… |
-| SMOKE × CLONE | REACTION | PASS；起始 AIR=1360 WALL=48 SMOKE=64 CLONE=64 → 结束 AIR=1424 WALL=48 CLONE=64；中途曾现: SMOKE,CLONE；新: … |
 | FIRE × GAS | REACTION | PASS；起始 AIR=1360 WALL=48 FIRE=64 GAS=64 → 结束 AIR=1424 WALL=48 ASH=64；中途曾现: ASH,SMOKE,FIRE,GAS；新… |
-| GAS × CLONE | REACTION | PASS；起始 AIR=1360 WALL=48 GAS=64 CLONE=64 → 结束 AIR=1424 WALL=48 CLONE=64；中途曾现: GAS,CLONE；新: 无；消失… |
 | TNT × TNT | REACTION | PASS；起始 AIR=1424 WALL=48 TNT=64 → 结束 AIR=1424 WALL=48 TNT=64；中途曾现: TNT；新: 无；消失: 无；Tmax 20.0°C… |
 
 ### 3.3 方向性偏差（A×B 与 B×A 的"判定或产物集合"不同，9 组）
