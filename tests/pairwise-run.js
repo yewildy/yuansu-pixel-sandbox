@@ -26,7 +26,7 @@ var fs = require('fs');
 var ROOT = path.join(__dirname, '..');
 
 var CORE = ['balance', 'rng', 'elements', 'grid', 'thermal', 'transitions',
-  'reactions', 'movement', 'air', 'biology', 'wind', 'engine'];
+  'reactions', 'movement', 'air', 'biology', 'wind', 'waves', 'pressure', 'engine'];
 CORE.forEach(function (m) { require(path.join(ROOT, 'src', 'core', m + '.js')); });
 
 var YS = globalThis.YS;
