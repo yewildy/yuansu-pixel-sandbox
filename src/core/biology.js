@@ -55,8 +55,25 @@
     return !!E && (E.state === 'solid' || E.state === 'powder');
   }
 
-  /* 有界 BFS：判该 PLANT 格是否连通到地面（§3.1） */
-  function isRooted(grid, start, limit) {
+  /* v1.4.1：种子着地判据 —— 下方是地面，**或**下方是同类种子且该种子堆在
+   * SEED.CHAIN_MAX 格内连到地面（种子堆本身即基质）。
+   * 为什么必须放宽：8×8 种子块贴着水时，顶部种子"湿+露头"但下方是种子（旧判据判未着地），
+   * 底部种子"着地+湿"却被同类埋住不露头 —— 整块一粒都不发芽（配对实验 SEED×WATER
+   * mid/large 由 PASS 变 FAIL 的直接原因；旧代码靠"种子浮水被水流打散"侥幸通过）。
+   * 有界下探（≤CHAIN_MAX 格）保住"空中楼阁"红线：悬空过高的种子照旧不发。 */
+  function seedGrounded(grid, x, y) {
+    var el = grid.element, w = grid.w, h = grid.h, cy = y + 1, steps = 0;
+    while (cy < h && steps < Balance.SEED.CHAIN_MAX) {
+      var e = el[cy * w + x];
+      if (e === AIR) return false;
+      if (isGroundSurface(e)) return true;
+      if (e !== SEED) return false;
+      cy++; steps++;
+    }
+    return cy >= h;                                   // 探到网格底边 = 硬地面
+  }
+
+  /* 有界 BFS：判该 PLANT 格是否连通到地面（§3.1） */  function isRooted(grid, start, limit) {
     var el = grid.element, w = grid.w, h = grid.h;
     var q = rootQ;
     visitId++;
@@ -222,7 +239,7 @@
 
           var grounded = true;
           if (Balance.SEED.GROUND_REQUIRED) {
-            grounded = (y === h - 1) ? true : isGroundSurface(el[i + w]);
+            grounded = seedGrounded(grid, x, y);
           }
           var wet = false;
           var R = Balance.SEED.MOIST_RADIUS;
@@ -234,9 +251,17 @@
               if (v === WATER || (v === SOIL && age[yy * w + xx] > 0)) { wet = true; break; }
             }
           }
+          /* v1.4.1 露头判据放宽为"四邻域任一为 AIR/WATER"（即"未被深埋"）：
+           * 旧判据只看正上方 1-2 格 → 压在同类种子上的种子（上方是种子）与
+           * 底部贴着水膜的种子（上方是同类）统统判为"未露头"，整块种子一粒不发芽
+           * （配对实验 SEED×WATER mid/large FAIL 的第二层原因）。
+           * 深埋守卫不失效：埋在土/沙/其他固体里的种子四邻皆非空非水 → 照旧不发。 */
           var exposed = false;
-          if (y > 0) { var a1 = el[i - w]; if (a1 === AIR || a1 === WATER) exposed = true; }
-          if (!exposed && y > 1) { var a2 = el[i - 2 * w]; if (a2 === AIR || a2 === WATER) exposed = true; }
+          var nbE = grid.fill4(i);
+          for (var kE = 0; kE < 4; kE++) {
+            var nE = nbE[kE];
+            if (nE >= 0) { var vE = el[nE]; if (vE === AIR || vE === WATER) { exposed = true; break; } }
+          }
           var tempOK = (T >= Balance.SEED.TEMP_MIN && T <= Balance.SEED.TEMP_MAX);
 
           if (grounded && wet && tempOK && exposed) { if (age[i] < 65535) age[i]++; }

@@ -186,6 +186,7 @@
     DEATH_HOT_T: 60,
     DEATH_COLD_T: -10,
     GROUND_REQUIRED: true,     // 新增：发芽必须着地（B4 第一道闸）
+    CHAIN_MAX: 8,              // v1.4.1：着地判据的下探上限 —— 压在同类种子上的种子，下方 8 格内连到地面即算着地
     MOIST_RADIUS: 2            // 新增：湿度检测半径
   };
   var PLANT = {
