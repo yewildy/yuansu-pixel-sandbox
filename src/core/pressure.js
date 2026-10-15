@@ -137,10 +137,19 @@
         var dP = Pi - bestP;
         /* 分两种驱动源、两套阈值（见 balance.PRESSURE 注释）：
          *   · 冲击压（任一侧 press≠0）→ 用很小的 FLOW_EPS_IMPULSE（冲击波必须能顺畅向外传播）；
-         *   · 纯热压 → 用较粗的 FLOW_EPS，且仅"垂直被堵"时驱动（保护既有热对流手感，A1）。 */
+         *   · 纯热压 → 用较粗的 FLOW_EPS，且仅"垂直被堵"时驱动（保护既有热对流手感，A1）。
+         * v1.6.3 曾试过给"纯热压"加**横向**流动（想做成对流环流的水平段）→ **已回退**：
+         *   FLOW_EPS_H=0.02/0.05 两档都让竖直热羽被横向抽走（A3 热空气上移、V24 冷蒸汽占比
+         *   两项回归失败），而蛇形通道顶部的横向流动仍是 0 —— 净负收益。
+         *   真正的堵点见 balance.js AIR.BUOY 注释：浮力参考是"全局环境温"而非局部密度。 */
         var imp = (press[i] !== 0 || press[best] !== 0);
+        var horiz = (best === i - 1) || (best === i + 1);
         if (imp) {
-          if (dP <= EPS_IMPULSE) continue;
+          if (dP <= EPS_IMPULSE) continue;              // 冲击波：四方向 + 极小阈值
+        } else if (horiz) {
+          /* v1.6.3：纯热压的**横向**流动 = 对流环流的水平段（见 balance.FLOW_EPS_H 注释）。
+             * 只放宽横向；竖直方向仍走下面的 upBlocked 分支，不抽走竖直热羽。 */
+          if (dP <= P.FLOW_EPS_H) continue;
         } else {
           if (dP <= eps) continue;
           var upBlocked = (y === 0) || !IS_GAS[el[i - w]];
