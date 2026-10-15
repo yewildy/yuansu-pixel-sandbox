@@ -51,6 +51,7 @@
    * 同种液体之间不存在"分层"顾虑，给一个更高的下限 SAME_CONVECT_MIN_F 让对流跑得动。
    * ========================================================================== */
   var BUOY = Balance.BUOY;
+  var LIQUID = Balance.LIQUID;
 
   /* 有效密度：仅液体/气体随温度膨胀（固体/粉末不参与热对流，且它们本来就不上浮） */
   function effDensity(e, T, amb) {
@@ -236,14 +237,35 @@
           }
         }
       }
-      /* 4. 水平铺展 p = mobility × 0.8（阻尼已由上方的 mediumGate 统一施加） */
+      /* 4. 水平铺展 p = mobility × 0.8 × filmF（阻尼已由上方的 mediumGate 统一施加）
+       *
+       *    filmF —— 薄液膜阻尼（v1.3.0，docs/PHYSICS-AIR.md 附录 D）。
+       *    旧代码对一切液体一视同仁，于是「1 格孤立水滴」也以 mobility×0.8 ≈ 0.5/tick 横向狂奔，
+       *    等效约 30 格/秒 —— 一滴水会在 1200 tick 内沿底行随机游走 40 多格。这带来两条实测 FAIL：
+       *      · SEED×WATER small：水游走离开种子 → 根区无湿源 → 永不发芽；
+       *      · OIL×FIRE   small：油游走离开火苗 → 火焰失去锚定后上浮 → 点不着。
+       *    物理上，重力驱动的横向流量 ∝ h²（h = 液层厚度，泊肃叶流）：被上方液体压着的内部格
+       *    横向流速大；暴露在气体下的自由表面薄层受壁面摩擦与表面张力阻滞，几乎不流。
+       *    判据：上方无液体压力 **且** 左右下均无同种液体（孤立液滴）→ 乘 FILM_SPREAD_F；
+       *    连续液膜（左右/下方有同类）照旧全速 → 找平、连通器、灌注等宏观行为不受影响。 */
+      var filmF = 1;
+      if (LIQUID && LIQUID.FILM_SPREAD_F < 1) {
+        var upId = (y > 0) ? el[i - w] : 1;
+        var UE = ELS[upId];
+        var pressed = !(upId === 1 || (UE.movable && UE.state === 'gas'));
+        var lid = (x > 0) ? el[i - 1] : 1;
+        var rid = (x < w - 1) ? el[i + 1] : 1;
+        var did = (y < h - 1) ? el[i + w] : 1;
+        var linked = (lid === e || rid === e || did === e);
+        if (!pressed && !linked) filmF = LIQUID.FILM_SPREAD_F;
+      }
       var orderh = RNG.hash01(x, y, e * 131 + tick) < 0.5 ? -1 : 1;
       for (s = 0; s < 2; s++) {
         dx = s === 0 ? orderh : -orderh;
         nx = x + dx;
         if (nx >= 0 && nx < w) {
           j = i + dx;
-          if (enterableSide(dens, el[j]) && RNG.hash01(x, y, e * 307 + tick + s) < E.mobility * 0.8) {
+          if (enterableSide(dens, el[j]) && RNG.hash01(x, y, e * 307 + tick + s) < E.mobility * 0.8 * filmF) {
             swapMove(grid, i, j, tick); return;
           }
         }

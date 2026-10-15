@@ -54,6 +54,7 @@
     'help.rule4': '種の発芽：水か土を与え、5–40°C を保ち、深く埋めなければ約 1.8 秒で発芽。',
     'help.rule5': '風：全体の風が気体と軽い粉末を流す；高温の空気柱（>200°C）が上昇気流を作る。',
     'help.rule6': 'クローンは 4 tick ごとに隣を複製；水源は 6 tick ごとに水を出す（いずれも上限あり）。',
+    'help.rule7': '永燃の火種：消えない熱源。周囲の可燃物を燃やし続け、水でも消えない。',
     'help.elementsTitle': '元素一覧',
     'help.closeBtn': '了解',
 
@@ -64,7 +65,7 @@
     'el.SEED': '種', 'el.WATER': '水', 'el.OIL': '油', 'el.LAVA': '溶岩',
     'el.ACID': '酸', 'el.LN2': '液体窒素', 'el.STEAM': '蒸気', 'el.SMOKE': '煙',
     'el.FIRE': '火', 'el.GAS': 'メタンガス', 'el.CLONE': 'クローン', 'el.VIRUS': 'ウイルス',
-    'el.SPRING': '水源', 'el.TNT': '爆薬'
+    'el.SPRING': '水源', 'el.TNT': '爆薬', 'el.EMBER': '永燃の火種'
   });
   if (typeof module === 'object' && module.exports) module.exports = I18N.DICTS['ja'];
 })(typeof globalThis !== 'undefined' ? globalThis : this);

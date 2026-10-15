@@ -7,7 +7,8 @@
  *     2 airPass       §5.4/§6（AIR 专用对流/浮力/风；隔帧执行；见 docs/PHYSICS-AIR.md）
  *     3 reactionPass  §8（内含 §9.5 爆炸 + §9.6 耗氧）
  *     4 lifePass      §10（严格生态，见 docs/PLANT-MODEL.md）
- *     5 thermalPass   §6.1（结果写入 nextTemp；含空气-空气双轨配对）
+ *     5 thermalPass   §6.1（diffuse 结果写入 nextTemp；含空气-空气双轨配对；
+ *                      v1.4.0 起追加 contactFlux 接触传热，见 thermal.js）
  *     6 phasePass     §7（读 nextTemp）
  *     7 relaxPass     §6.3（+ 顶部天空热沉）
  *     8 commitTemp    温度钳制 + 回写（替代「清 flags / swap」）
@@ -64,6 +65,7 @@
       Reactions.reactionPass(g, ctx);
       Biology.lifePass(g, ctx);
       Thermal.diffuse(g);
+      Thermal.contactFlux(g);          // v1.4.0 接触传热（火焰接触 + 热气体对流；diffuse 后、relax 前）
       Transitions.process(g, this.tick);
       Thermal.relax(g, this.ambient);
       g.commitTemp(P.MIN_TEMP, P.MAX_TEMP);

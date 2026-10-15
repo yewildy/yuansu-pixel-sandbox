@@ -2,7 +2,9 @@
  * biology.js — 生命 / 植物 / 病毒（docs/PLANT-MODEL.md，替代 docs/PHYSICS.md §10）
  *   严格生态：① 发芽须着地；② 生长须根系连通地面（isRooted，有界 BFS + 节流）；
  *   ③ 生长消耗附近水分；④ 高度由供水能力/毛细极限自然封顶（CAPILLARY_HEAD）；
- *   ⑤ v1.2.0 起：断根/干旱 → **休眠**（停止生长，不死亡、不变 DUST）。
+ *   ⑤ v1.2.0 起：断根/干旱 → **休眠**（停止生长，不死亡、不变 DUST）；
+ *   ⑥ v1.4.0 起：横向（藤蔓）生长（VINE_P，对齐 Powder Game 的 Vine——
+ *     只向侧上生长、须有支撑，见 docs/PLANT-MODEL.md「横向/藤蔓生长」一节）。
  *
  *   字段复用（不新增数组）：SEED.age = 发芽计时器；PLANT.age = 枯萎计时器；SOIL.age = 含水量。
  *   模块级缓存（rootQ/rootVisit/wiltList/rootedCache/rootedStamp）按 grid.n 惰性分配，零热路径 new。
@@ -113,6 +115,20 @@
         if (e === WATER) { if (dist < bw) { bw = dist; foundWater = n; } }
         else if (e === SOIL && grid.age[n] > 0) { if (dist < bs) { bs = dist; foundSoil = n; } }
       }
+    }
+  }
+
+  /* 生长耗水（§4.2；v1.4.0 起向上生长与横向藤蔓生长共用同一套逻辑）：
+   * 以 WATER_COST_P 概率消耗 1 单位水 —— 优先取水（WATER→AIR），其次抽湿土。
+   * 读模块级 foundWater/foundSoil（由 findWater 为本列柱基写入）。 */
+  function consumeGrowthWater(grid, x, y, tick, amb) {
+    if (RNG.hash01(x, y, tick * 47 + 17) >= Balance.PLANT.WATER_COST_P) return;
+    if (foundWater >= 0) {
+      grid.element[foundWater] = AIR; grid.temp[foundWater] = amb;
+      grid.age[foundWater] = 0; grid.latent[foundWater] = 0;
+    } else if (foundSoil >= 0) {
+      var sa = grid.age[foundSoil];
+      grid.age[foundSoil] = sa > Balance.PLANT.SOIL_DRAW ? sa - Balance.PLANT.SOIL_DRAW : 0;
     }
   }
 
@@ -245,27 +261,67 @@
           age[i] = age[i] > 2 ? age[i] - 2 : 0;
         }
 
-        /* 向上生长：必须连地（未连地绝不生长，§4.1 —— 守住"空中楼阁"红线） */
+        /* 生长公共闸门：必须连地（未连地绝不生长，§4.1 —— 守住"空中楼阁"红线）
+         * 且根区有水/湿土。v1.4.0 起向上生长与横向（藤蔓）生长并列，
+         * 故不再用 continue 早退（一方条件不满足不得连带跳过另一方）。 */
         if (!rooted) continue;
-        if (y === 0) continue;
-        var up = i - w, ue = el[up];
-        if (ue !== AIR && ue !== WATER) continue;
-        var hh = columnHeight(grid, x, y);
-        if (hh >= Balance.PLANT.CAPILLARY_HEAD) continue;     // 毛细供水极限（软墙）
-        if (!hasWater) continue;                              // 根区无水无湿土 → 生长暂停
-        var pgrow = Balance.PLANT.GROW_P * (1 - hh / Balance.PLANT.CAPILLARY_HEAD);
-        if (RNG.hash01(x, y, tick * 43 + 13) < pgrow) {
-          if (colonySize(grid, i) < Balance.PLANT.MAX_COLONY) {
-            el[up] = PLANT; temp[up] = T; age[up] = 0; latent[up] = 0; rootedStamp[up] = 0;
-            /* 生长消耗水：优先取水（WATER→AIR），其次抽湿土（§4.2） */
-            if (RNG.hash01(x, y, tick * 47 + 17) < Balance.PLANT.WATER_COST_P) {
-              if (foundWater >= 0) {
-                el[foundWater] = AIR; temp[foundWater] = amb; age[foundWater] = 0; latent[foundWater] = 0;
-              } else if (foundSoil >= 0) {
-                var sa = age[foundSoil];
-                age[foundSoil] = sa > Balance.PLANT.SOIL_DRAW ? sa - Balance.PLANT.SOIL_DRAW : 0;
+        if (!hasWater) continue;                              // 根区无水无湿土 → 生长暂停（上/横生共用）
+
+        /* ---- 向上生长（§4.1；GROW_P=0.08，受 CAPILLARY_HEAD=80 软上限）----
+         * 仅"直立茎"格可向上生长：latent>0 的格是横向蔓延生成的**匍匐蔓**
+         * （stolon，贴着基底侧向延伸的器官），不向上抽枝。
+         * 为什么必须分开（v1.4.0 实测）：若每枚蔓格都能向上抽枝，群落会以
+         * VINE_P/格/tick 指数式铺开，MAX_COLONY=512 在数百 tick 内耗尽、
+         * 全部生长（含主柱）冻结；且平行水柱共享根区水源，主柱高度实测
+         * 只有 19（V6 红线要求 ≥30）。分开后蔓贴地蔓延、茎依水长高，互不饿死。 */
+        if (y > 0 && latent[i] === 0) {
+          var up = i - w, ue = el[up];
+          if (ue === AIR || ue === WATER) {
+            var hh = columnHeight(grid, x, y);
+            if (hh < Balance.PLANT.CAPILLARY_HEAD) {          // 毛细供水极限（软墙）
+              var pgrow = Balance.PLANT.GROW_P * (1 - hh / Balance.PLANT.CAPILLARY_HEAD);
+              if (RNG.hash01(x, y, tick * 43 + 13) < pgrow &&
+                colonySize(grid, i) < Balance.PLANT.MAX_COLONY) {
+                el[up] = PLANT; temp[up] = T; age[up] = 0; latent[up] = 0; rootedStamp[up] = 0;
+                consumeGrowthWater(grid, x, y, tick, amb);    // §4.2 耗水
               }
             }
+          }
+        }
+
+        /* ---- 横向（藤蔓）生长（v1.4.0，B1；对齐 Powder Game 的 Vine：
+         * "only grows sideways and up, never down" —— 只向侧上生长，且可覆盖在各种基底上）----
+         * 模型 = **贴地蔓（stolon）**：匍匐茎贴着基底向侧方延伸，本身不再向上抽枝
+         * （latent 标记为 1，见上）；要长成新的直立枝条，由该处的直立茎格负责。
+         * 闸门：rooted + hasWater + colonySize < MAX_COLONY + **发起格贴地**
+         *   （正下方是地面；贴底行时网格底边即地板 —— 守住"空中楼阁"红线，
+         *    悬空的植株格不横生）。不受 CAPILLARY_HEAD 限制（那不是垂直吸水）。
+         * 目标 = 左/右格为 AIR 或 WATER；左/右方向由 RNG 定序；耗水与向上生长
+         * 完全复用（consumeGrowthWater：WATER_COST_P / foundWater / foundSoil）。
+         *
+         * 支撑条件为何收紧为"贴地"（任务书原文为"地面或 PLANT"，v1.4.0 实测后收紧）：
+         * 若允许借助下方 PLANT 格逐层堆叠，蔓层会糊成多行方块（V6 实测 N=310），
+         * 把根区水源吃光后主柱高度停在 24（<30，V6 红线 FAIL）。贴地蔓下实测
+         * V6 主柱 35/32/27（种子 1337/7/42），且蔓仍可覆盖任何地面基底。
+         * 详见 docs/PLANT-MODEL.md「横向/藤蔓生长（v1.4.0）」。 */
+        var supported = (y === h - 1) || isGroundSurface(el[i + w]);
+        if (supported && RNG.hash01(x, y, tick * 41 + 11) < Balance.PLANT.VINE_P &&
+          colonySize(grid, i) < Balance.PLANT.MAX_COLONY) {
+          var vd = RNG.hash01(x, y, tick * 53 + 7) < 0.5 ? -1 : 1;   // 左/右定序
+          var vn = -1;
+          if (x + vd >= 0 && x + vd < w) {
+            var ve = el[i + vd];
+            if (ve === AIR || ve === WATER) vn = i + vd;
+          }
+          if (vn < 0 && x - vd >= 0 && x - vd < w) {
+            var ve2 = el[i - vd];
+            if (ve2 === AIR || ve2 === WATER) vn = i - vd;
+          }
+          if (vn >= 0) {
+            el[vn] = PLANT; temp[vn] = T; age[vn] = 0;
+            latent[vn] = 1;                            // 匍匐蔓标记：不再向上抽枝（见上）
+            rootedStamp[vn] = 0;
+            consumeGrowthWater(grid, x, y, tick, amb);
           }
         }
       }

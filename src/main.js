@@ -18,6 +18,7 @@
     switch (id) {
       case ID.LAVA: return 1200;
       case ID.FIRE: return 600;
+      case ID.EMBER: return 900;    // v1.4.0 永燃火种（与 Balance.EMBER.TEMP 一致）
       case ID.LN2: return -196;
       case ID.ICE: return -10;
       case ID.SNOW: return -10;

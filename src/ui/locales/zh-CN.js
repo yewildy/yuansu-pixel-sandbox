@@ -54,6 +54,7 @@
     'help.rule4': '种子发芽：给种子水或土壤、保持 5–40°C、别埋太深，约 1.8 秒后发芽。',
     'help.rule5': '风：全局风推动气体与轻质粉末；热空气柱（>200°C）制造上升烟柱。',
     'help.rule6': '克隆体每 4 tick 复制相邻元素；水源泉每 6 tick 产出水（均受配额限制）。',
+    'help.rule7': '永燃火种：不灭的热源，持续点燃邻近可燃物并加热周围，水浇不灭。',
     'help.elementsTitle': '元素一览',
     'help.closeBtn': '知道了',
 
@@ -64,7 +65,7 @@
     'el.SEED': '种子', 'el.WATER': '水', 'el.OIL': '油', 'el.LAVA': '岩浆',
     'el.ACID': '强酸', 'el.LN2': '液氮', 'el.STEAM': '水蒸气', 'el.SMOKE': '烟',
     'el.FIRE': '火', 'el.GAS': '瓦斯', 'el.CLONE': '克隆体', 'el.VIRUS': '病毒',
-    'el.SPRING': '水源泉', 'el.TNT': '炸药'
+    'el.SPRING': '水源泉', 'el.TNT': '炸药', 'el.EMBER': '永燃火种'
   });
   if (typeof module === 'object' && module.exports) module.exports = I18N.DICTS['zh-CN'];
 })(typeof globalThis !== 'undefined' ? globalThis : this);

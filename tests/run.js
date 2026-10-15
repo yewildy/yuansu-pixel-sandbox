@@ -50,7 +50,7 @@ test('1a. 导热守恒 Σ c·T（比热加权模式，关弛豫）', function ()
   var g = Grid.create(48, 32), n = g.n;
   g.temp = new Float64Array(n); g.nextTemp = new Float64Array(n);
   var c = El.specificHeat, i;
-  for (i = 0; i < n; i++) { g.element[i] = 1 + (i % 30); g.temp[i] = (i % 61) * 7 - 100; }
+  for (i = 0; i < n; i++) { g.element[i] = 1 + (i % 31); g.temp[i] = (i % 61) * 7 - 100; }
   var s0 = 0; for (i = 0; i < n; i++) s0 += c[g.element[i]] * g.temp[i];
   Thermal.diffuse(g, { energyWeighted: true });
   var s1 = 0; for (i = 0; i < n; i++) s1 += c[g.element[i]] * g.nextTemp[i];
@@ -64,7 +64,7 @@ test('1b. 导热守恒 Σ C·T（生产模式 · 体积热容加权，关弛豫�
   var g = Grid.create(48, 32), n = g.n;
   g.temp = new Float64Array(n); g.nextTemp = new Float64Array(n);
   var C = El.volHeat, i;
-  for (i = 0; i < n; i++) { g.element[i] = 1 + (i % 30); g.temp[i] = (i % 61) * 7 - 100; }
+  for (i = 0; i < n; i++) { g.element[i] = 1 + (i % 31); g.temp[i] = (i % 61) * 7 - 100; }
   var s0 = 0; for (i = 0; i < n; i++) s0 += C[g.element[i]] * g.temp[i];
   Thermal.diffuse(g, {});
   var s1 = 0; for (i = 0; i < n; i++) s1 += C[g.element[i]] * g.nextTemp[i];
@@ -109,8 +109,8 @@ test('2. 纯物理演化 3000 tick 总格数恒为 W×H（含耗氧：物质可 
   var okTotal = true, okBound = true, at = -1;
   for (var t = 0; t < 3000; t++) {
     eng.step();
-    // 不变量：每格始终有且仅有一个元素（element ∈ [1,30]，绝不为 0）→ 总格数恒 = n
-    for (var i = 0; i < g.n; i++) { var ev = g.element[i]; if (ev < 1 || ev > 30) { okTotal = false; at = t; break; } }
+    // 不变量：每格始终有且仅有一个元素（element ∈ [1,31]，绝不为 0）→ 总格数恒 = n
+    for (var i = 0; i < g.n; i++) { var ev = g.element[i]; if (ev < 1 || ev > 31) { okTotal = false; at = t; break; } }
     if (!okTotal) break;
     // 物质不得无界增长（耗氧每次至多 +1，且烟会衰回空气）
     if (totalCells(g) > cells0 + 3000) { okBound = false; at = t; break; }
@@ -123,15 +123,19 @@ test('2. 纯物理演化 3000 tick 总格数恒为 W×H（含耗氧：物质可 
    3. 相变 1↔1 + 反应计数
    ============================================================ */
 test('3a. 水 → 蒸汽 保持 1 格（沸腾）', function () {
+  /* v1.4.0（A5）：旧实现盯固定坐标 (12,12) —— 单格水会掉走、蒸汽会升腾，
+   * 坐标上永远等不到目标元素（坏测试）。改为**追踪元素本身**（全场扫描 STEAM）。 */
   var eng = Engine.create({ w: 24, h: 24, seed: 1337 }), g = eng.grid;
   g.setEl(12, 12, E.WATER); g.temp[g.idx(12, 12)] = 200;
   var n0 = totalCells(g), became = -1;
-  for (var t = 0; t < 300; t++) { eng.step(); if (g.element[g.idx(12, 12)] === E.STEAM) { became = t; break; } }
-  assert(became >= 0, '水应在 300 tick 内变为蒸汽');
+  for (var t = 0; t < 300; t++) { eng.step(); if (count(g, E.STEAM) > 0) { became = t; break; } }
+  assert(became >= 0, '水应在 300 tick 内变为蒸汽（全场出现 STEAM）');
   assert(totalCells(g) === n0, '相变应保持格数不变 (' + n0 + ')');
 });
 
 test('3b. 冰 → 水 保持 1 格（融化）', function () {
+  /* 固定坐标安全：ICE 是静态固体（movable=0）不会移动，且移动 pass 排在相变 pass 之前，
+   * 融化的 WATER 当 tick 就出现在原格 —— 与 3a（单格水会掉走）有本质区别。 */
   var eng = Engine.create({ w: 24, h: 24, seed: 1337 }), g = eng.grid;
   g.setEl(12, 12, E.ICE); g.temp[g.idx(12, 12)] = 10;
   var n0 = totalCells(g), became = -1;
@@ -141,6 +145,7 @@ test('3b. 冰 → 水 保持 1 格（融化）', function () {
 });
 
 test('3c. 蒸汽 → 水 保持 1 格（冷凝）', function () {
+  /* 固定坐标安全：wallRing 把蒸汽困在 3×3 石室里无处可逃，冷凝发生在原格。 */
   var eng = Engine.create({ w: 24, h: 24, seed: 1337 }), g = eng.grid;
   wallRing(g, 12, 12, 1);                       // 困住蒸汽，避免其升腾逸出
   g.setEl(12, 12, E.STEAM); g.temp[g.idx(12, 12)] = 20;
@@ -222,7 +227,7 @@ test('6. 演化后无 NaN、元素 ID 合法、温度可读', function () {
   var bad = 0;
   for (var i = 0; i < g.n; i++) {
     var e = g.element[i], v = g.temp[i];
-    if (e < 1 || e > 30) bad++;
+    if (e < 1 || e > 31) bad++;
     if (typeof v !== 'number' || isNaN(v)) bad++;
   }
   assert(bad === 0, '发现 ' + bad + ' 处非法值');
@@ -266,18 +271,24 @@ test('7c. 水在 20°C 空气中 600 tick 后不蒸发', function () {
 /* ============================================================
    8. 数据完整性 / i18n
    ============================================================ */
-test('8a. 元素表：30 种，ID/类别/配色齐全（AIR=id1，group=none 不进面板）', function () {
-  assert(El.LIST.length === 30, '应恰有 30 种元素');
+test('8a. 元素表：31 种，ID/类别/配色齐全（AIR=id1，group=none 不进面板；v1.4.0 新增 EMBER=id31）', function () {
+  assert(El.LIST.length === 31, '应恰有 31 种元素');
   var groups = { solid: 0, powder: 0, liquid: 0, gas: 0, special: 0, none: 0 };
   El.LIST.forEach(function (e) {
-    assert(e.id >= 1 && e.id <= 30, 'ID 越界');
+    assert(e.id >= 1 && e.id <= 31, 'ID 越界');
     assert(typeof e.base === 'string' && e.base[0] === '#', '缺 base 配色: ' + e.key);
     groups[e.group]++;
   });
-  assert(groups.solid === 7 && groups.powder === 8 && groups.liquid === 6 && groups.gas === 4 && groups.special === 4 && groups.none === 1,
+  assert(groups.solid === 7 && groups.powder === 8 && groups.liquid === 6 && groups.gas === 4 && groups.special === 5 && groups.none === 1,
     '分组计数错误: ' + JSON.stringify(groups));
   assert(E.AIR === 1 && E.EMPTY === 1, 'AIR/EMPTY 别名应同为 id 1');
   assert(El.get(1).key === 'AIR' && El.get(1).group === 'none', 'id 1 应为 AIR 且 group=none');
+  /* v1.4.0 EMBER「永燃火种」：静态固体、不老化、k=8 利于导热、自发光 strong */
+  var em = El.get(31);
+  assert(em && em.key === 'EMBER' && em.state === 'solid' && !em.movable && em.lifetime === -1,
+    'EMBER 应为静态不老化固体');
+  assert(em.conductivity === 8.00 && em.emissive === 'strong' && em.anim === true, 'EMBER 导热/自发光/动画字段不符');
+  assert(El.volHeat[31] === 1500 * 700, 'EMBER 体积热容表应覆盖 id 31');
 });
 
 test('8b. balance 键名与 §14 一致（抽样）', function () {
@@ -293,7 +304,15 @@ test('8b. balance 键名与 §14 一致（抽样）', function () {
   assert(B.PHYS.ENV_RELAX_SOLID === 0.001, 'ENV_RELAX_SOLID 应为 0.001');
   assert(B.WATER.EVAP_P_AT_100 === 0.02, 'EVAP_P_AT_100');
   assert(B.LN2.BOIL_T === -196, 'LN2.BOIL_T');
-  assert(B.TNT.RADIUS === 6 && B.TNT.CHAIN_MAX === 8, 'TNT 参数');
+  /* v1.4.0 炸药增强（用户反馈"爆炸范围太小基本没作用"）：RADIUS 6→10、CHAIN_MAX 8→12 */
+  assert(B.TNT.RADIUS === 10 && B.TNT.CHAIN_MAX === 12, 'TNT 参数（v1.4.0 增强）');
+  assert(B.TNT.TEMP_BOOST === 600 && B.TNT.P_FIRE === 0.45, 'TNT 温升/火焰概率（v1.4.0 增强）');
+  /* v1.4.0 新增常数（GAS_CONTACT_K 由任务书原稿 0.02 上调至 0.05：
+   * 实测 0.02 下 _diag_water 场景 4 水温仅 74.3°C < 90 验收线，见 balance.js 注释） */
+  assert(B.EMBER && B.EMBER.TEMP === 900 && B.EMBER.IGNITE_P === 0.5, 'EMBER 参数组缺失');
+  assert(B.FIRE.CONTACT_K === 0.06, 'FIRE.CONTACT_K 应为 0.06（火焰接触传热）');
+  assert(B.PHYS.GAS_CONTACT_K === 0.05 && B.PHYS.GAS_FLUX_MIN_T === 100, '热气体对流传热常数缺失');
+  assert(B.PLANT.GROW_P === 0.08 && B.PLANT.VINE_P === 0.03, 'PLANT 生长参数（v1.4.0：GROW_P 加速 + VINE_P 横生）');
   assert(B.CLONE.COPY_INTERVAL === 4 && B.SPRING.EMIT_INTERVAL === 6, '流量参数');
 });
 
@@ -574,10 +593,10 @@ test('16. 守恒不变量：任意场景 3000 tick 后每格元素 id ∈ [1,30]
   var bad = 0, at = -1;
   for (var t = 0; t < 3000; t++) {
     eng.step();
-    for (var i = 0; i < g.n; i++) { var e = g.element[i]; if (e < 1 || e > 30) { bad++; at = t; break; } }
+    for (var i = 0; i < g.n; i++) { var e = g.element[i]; if (e < 1 || e > 31) { bad++; at = t; break; } }
     if (bad) break;
   }
-  assert(bad === 0, '第 ' + at + ' tick 出现非法元素 id（应恒在 [1,30]）');
+  assert(bad === 0, '第 ' + at + ' tick 出现非法元素 id（应恒在 [1,31]）');
 });
 
 /* ============================================================
@@ -764,7 +783,10 @@ test('N1-10. 确定性：同种子两次（含燃烧蔓延）哈希一致', func
          → 同样操作"有时烧成灰、有时纹丝不动"。
    本条为**表征（characterization）测试**：锁定"当前可点燃种子数"的**下限**，防止静默退化
    （若某次改动把 6/8 退成 0/8，本测试会失败）。
-   ⚠ 已知缺陷：默认种子 1337 亦为 0%（见 docs/PAIRWISE-REPORT.md §4.16，Major，待用户决策修复）。
+   ⚠ v1.4.0 复核：火焰温度重锚（A1）**不改善**本项 —— 重锚只作用于锚定火焰（latent>0，
+   即已点燃之后），而初始点火靠自由火焰（latent=0，寿命仅 LIFE_BASE≈40 tick）在 40 tick
+   内掷中 spreadP；接触传热（A2）又豁免可燃物目标（防"无氧也引燃"绕过红线），
+   燃料只能靠导热缓慢升温，来不及热解。当前维持 6/8（不可点燃种子以本行输出为准）。
    ============================================================ */
 test('T6.3 点燃稳定性（表征）：8×8 木块旁点火，≥6/8 种子可点燃（已知脆弱，见 PAIRWISE-REPORT §4.16）', function () {
   var seeds = [1, 2, 7, 42, 99, 20261011, 555, 1337];
@@ -778,7 +800,7 @@ test('T6.3 点燃稳定性（表征）：8×8 木块旁点火，≥6/8 种子可
     if ((64 - count(g, E.WOOD)) / 64 >= 0.5) good++; else failedSeeds.push(seeds[si]);
   }
   lines.push('      \u26a0 点燃脆弱性已知项（PAIRWISE-REPORT §4.16）：不可点燃种子 = [' +
-    failedSeeds.join(',') + ']（' + good + '/8 可点燃；默认 1337 在列）');
+    failedSeeds.join(',') + ']（' + good + '/8 可点燃；v1.4.0 复核维持原状，见上方说明）');
   assert(good >= 6, '可点燃种子仅 ' + good + '/8（<6，疑似回归）');
 });
 
@@ -1015,6 +1037,151 @@ test('V11. 实心煤块燃烧穿透（多种子）', function () {
     assert(burned > 0.5, 'seed=' + seeds[k] + ' 煤块 1200 tick 应烧掉 >50%，实得 ' +
       (burned * 100).toFixed(0) + '%（残留 ' + left + '/' + s * s + '）');
   }
+});
+
+/* ============================================================
+   V12/V12b — v1.4.0：火焰温度重锚（A1）+ 接触传热（A2）
+   背景：用户实测「铁锅+柴火烧水，水温卡在 34.7°C 不再上升」。根因是锚定火焰
+   （latent>0）的温度没有被持续钳制 —— 火一碰到金属/水就被体积热容加权导热拉到
+   平衡温度（~150°C）且永不恢复，热源"死"了（volHeat[FIRE]=1e6 的等效热容 hack
+   对空气有效、对金属/水无效）。V4 用 1200°C 岩浆能过是因为岩浆热容大且持续，
+   掩盖了火焰的问题。修法：thermal.js relax 中把锚定火焰（且仍通气）的 nextTemp
+   直接置为 FUEL[].burnTemp（燃烧温度由化学放热钳定），并新增 contactFlux
+   （火焰接触 + 热气体对流的离散近似传热）。
+   ============================================================ */
+
+/* V12. 铁锅 + 柴火：600 tick 内水温最高 ≥90°C（复刻 _diag_water.js 场景 4 的锅型，
+ * 热源换成 WOOD+FIRE 而非 LAVA；火种（latent=WOOD 的锚定火焰）贴着锅底） */
+test('V12. 铁锅柴火烧水：火焰温度重锚后水温必须 ≥90°C（用户反馈，A1）', function () {
+  var eng = Engine.create({ w: 80, h: 80, seed: 1337 }), g = eng.grid;
+  fillBox(g, 0, 76, 79, 79, E.STONE);                 // 石地板
+  fillBox(g, 20, 73, 59, 75, E.WOOD);                 // 锅下木料（3 行燃料）
+  for (var i = 0; i < g.n; i++) if (g.element[i] === E.WOOD) { g.temp[i] = P.AMBIENT_T; g.nextTemp[i] = P.AMBIENT_T; }
+  /* 火种：贴着锅底的一行锚定火焰（latent=WOOD，燃烧温度 600，见 docs/COMBUSTION-MODEL.md §6.1） */
+  for (var x = 20; x <= 59; x++) { var fi = g.idx(x, 72); g.element[fi] = E.FIRE; g.latent[fi] = E.WOOD; g.temp[fi] = 600; g.nextTemp[fi] = 600; g.age[fi] = 0; }
+  fillBox(g, 24, 70, 55, 71, E.METAL);                // 锅底（与火种相邻）
+  fillBox(g, 24, 55, 25, 70, E.METAL);                // 左壁
+  fillBox(g, 54, 55, 55, 70, E.METAL);                // 右壁
+  fillBox(g, 26, 56, 53, 69, E.WATER);                // 锅内的水
+  var maxW = 0;
+  for (var t = 1; t <= 600; t++) {
+    eng.step();
+    for (var j = 0; j < g.n; j++) if (g.element[j] === E.WATER && g.temp[j] > maxW) maxW = g.temp[j];
+  }
+  assert(maxW >= 90, '600 tick 后锅内水温最高应 ≥90°C，实得 ' + maxW.toFixed(1) +
+    '°C（修复前卡在 34.7°C —— 火焰温度不被钳制，热源被金属/水拉死后永不恢复）');
+  assert(count(g, E.FIRE) >= 0 && count(g, E.EMBER) === 0, '场景不应产生 EMBER（v1.4.0 前不存在）');
+});
+
+/* V12b. 接触传热的公式保证：单 tick 传热量 = K×(T_src−T_dst)，有界且永不超过热源温度 */
+test('V12b. 接触传热：单 tick 有界、不超过热源温度、源冷不加热（A2 公式保证）', function () {
+  var g = Grid.create(8, 8);
+  g.clear(20);
+  var kF = YS.Balance.FIRE.CONTACT_K, kG = YS.Balance.PHYS.GAS_CONTACT_K;
+  /* ① 火焰(600) → 东邻石头(20) */
+  var f = g.idx(3, 3), s = g.idx(4, 3);
+  g.element[f] = E.FIRE; g.temp[f] = 600; g.nextTemp[f] = 600;
+  g.element[s] = E.STONE; g.temp[s] = 20; g.nextTemp[s] = 20;
+  /* ② 热空气(300, ≥GAS_FLUX_MIN_T) → 东邻金属(20) */
+  var a = g.idx(3, 5), m = g.idx(4, 5);
+  g.temp[a] = 300; g.nextTemp[a] = 300;                  // (3,5) 保持 AIR
+  g.element[m] = E.METAL; g.temp[m] = 20; g.nextTemp[m] = 20;
+  /* ③ 冷火焰(20) → 东邻热石头(100)：源冷不得冷却目标（只加热不冷却） */
+  var cf = g.idx(3, 6), hs = g.idx(4, 6);
+  g.element[cf] = E.FIRE; g.temp[cf] = 20; g.nextTemp[cf] = 20;
+  g.element[hs] = E.STONE; g.temp[hs] = 100; g.nextTemp[hs] = 100;
+  Thermal.contactFlux(g);
+  assertNear(g.nextTemp[s] - 20, kF * (600 - 20), 1e-3, '火焰接触传热量应 = FIRE.CONTACT_K×(T_src−T_dst)');
+  assertNear(g.nextTemp[m] - 20, kG * (300 - 20), 1e-3, '热气体对流传热量应 = GAS_CONTACT_K×(T_src−T_dst)');
+  assert(g.nextTemp[s] < 600 && g.nextTemp[m] < 300, '传热不得越过热源温度');
+  assert(g.nextTemp[hs] === 100, '源温 ≤ 目标温时必须跳过（只加热不冷却），实得 ' + g.nextTemp[hs]);
+});
+
+/* ============================================================
+   V13 — v1.4.0：植物横向（藤蔓）生长（B1）
+   依据：Dan-Ball Powder Game 的 Vine「only grows sideways and up, never down」
+   —— 只向侧上生长。本作模型 = **贴地蔓（stolon）**：贴着基底侧向延伸、
+   本身不向上抽枝；向上长高仍由直立茎依水完成。红线：着根 + 有水 + 发起格贴地。
+   详见 docs/PLANT-MODEL.md「横向/藤蔓生长（v1.4.0）」。
+   ============================================================ */
+test('V13. 植物横向蔓延：贴地蔓 + 主柱持续长高（v1.4.0 B1）', function () {
+  var eng = Engine.create({ w: 80, h: 80, seed: 1337 }), g = eng.grid;
+  fillBox(g, 0, 76, 79, 79, E.WALL);                   // 地板
+  fillBox(g, 20, 74, 59, 75, E.SOIL);                  // 土床
+  fillBox(g, 38, 68, 59, 73, E.WATER);                 // 邻接水池（种子旁有水）
+  g.setEl(30, 73, E.SEED);                             // 种子落在土床上
+  var tallest = 0;
+  for (var t = 1; t <= 1200; t++) {
+    eng.step();
+    for (var x = 0; x < g.w; x++) {
+      var c = 0;
+      for (var y = 0; y < g.h; y++) if (g.element[g.idx(x, y)] === E.PLANT) c++;
+      if (c > tallest) tallest = c;
+    }
+  }
+  /* 横向宽度：被 PLANT 占据的列数（贴地蔓沿土床蔓延） */
+  var cols = 0, minX = 1e9, maxX = -1, nPlant = 0;
+  for (var x2 = 0; x2 < g.w; x2++) {
+    var c2 = 0;
+    for (var y2 = 0; y2 < g.h; y2++) if (g.element[g.idx(x2, y2)] === E.PLANT) c2++;
+    if (c2 > 0) { cols++; nPlant += c2; if (x2 < minX) minX = x2; if (x2 > maxX) maxX = x2; }
+  }
+  var width = cols ? maxX - minX + 1 : 0;
+  assert(tallest >= 8, '1200 tick 内株高应 ≥8（向上生长 GROW_P=0.08），实得 ' + tallest);
+  assert(width >= 6, '1200 tick 内横向宽度应 ≥6（贴地蔓 VINE_P=0.03），实得 ' + width);
+  assert(count(g, E.DUST) === 0, '断水只休眠不枯死：不应产生 DUST，实得 ' + count(g, E.DUST));
+});
+
+/* ============================================================
+   V14 — v1.4.0：EMBER「永燃火种」（B2，第 31 号元素）
+   用户诉求"点一下火就可以一直在那里烧"：静态固体热源，恒 900°C，
+   持续点燃邻接可燃物；不耗氧、不灭、不被水浇灭（R1 只对 FIRE 生效）；
+   爆炸中幸存（explosionPass 豁免，同 WALL）。
+   ============================================================ */
+test('V14. EMBER 永燃火种：点燃邻木 / 长燃不熄 / 可当炉子 / 爆炸不毁（v1.4.0 B2）', function () {
+  /* (a) EMBER 邻木料 → 120 tick 内木料被点燃烧掉 */
+  var eng = Engine.create({ w: 40, h: 40, seed: 1337 }), g = eng.grid;
+  for (var x = 0; x < 40; x++) g.setEl(x, 39, E.WALL, P.AMBIENT_T);
+  var ei = g.idx(10, 30);
+  g.setEl(10, 30, E.EMBER); g.temp[ei] = 900; g.nextTemp[ei] = 900;
+  g.setEl(11, 30, E.WOOD, P.AMBIENT_T);
+  var ignited = -1;
+  for (var t = 1; t <= 120; t++) {
+    eng.step();
+    if (count(g, E.WOOD) === 0 && count(g, E.FIRE) > 0) { ignited = t; break; }
+    if (count(g, E.WOOD) === 0 && t > 60) { ignited = t; break; }
+  }
+  assert(count(g, E.WOOD) === 0, 'EMBER 邻接的木料应在 120 tick 内被点燃烧掉，实得残留 ' + count(g, E.WOOD));
+  assert(ignited >= 0, '木料应被点燃（出现 FIRE）');
+
+  /* (b) 600 tick 后 EMBER 仍在且温度 ≥850（长燃不熄、恒温钳制） */
+  for (var t2 = ignited + 1; t2 <= 600; t2++) eng.step();
+  assert(count(g, E.EMBER) === 1, '600 tick 后 EMBER 应仍在，实得 ' + count(g, E.EMBER));
+  assert(g.temp[ei] >= 850, 'EMBER 温度应被钳制在 900°C（≥850），实得 ' + g.temp[ei].toFixed(1));
+
+  /* (c) EMBER 邻水 → 300 tick 内水温 ≥60°C（可当炉子） */
+  var e2 = Engine.create({ w: 40, h: 40, seed: 1337 }), g2 = e2.grid;
+  for (var x2 = 0; x2 < 40; x2++) for (var y2 = 36; y2 < 40; y2++) g2.setEl(x2, y2, E.WALL, P.AMBIENT_T);
+  fillBox(g2, 12, 32, 16, 35, E.WATER);                // 一小池水
+  var ei2 = g2.idx(10, 33);
+  g2.setEl(10, 33, E.EMBER); g2.temp[ei2] = 900; g2.nextTemp[ei2] = 900;
+  var maxW = 0;
+  for (var t3 = 1; t3 <= 300; t3++) {
+    e2.step();
+    for (var j = 0; j < g2.n; j++) if (g2.element[j] === E.WATER && g2.temp[j] > maxW) maxW = g2.temp[j];
+  }
+  assert(maxW >= 60, 'EMBER 邻水 300 tick 内水温应 ≥60°C（当炉子用），实得 ' + maxW.toFixed(1));
+  assert(count(g2, E.EMBER) === 1, '水不应浇灭 EMBER（永燃），实得 ' + count(g2, E.EMBER));
+
+  /* (d) 爆炸不销毁 EMBER（TNT 仍可被它引爆） */
+  var e3 = Engine.create({ w: 48, h: 32, seed: 1337 }), g3 = e3.grid;
+  for (var x3 = 0; x3 < 48; x3++) g3.setEl(x3, 31, E.WALL, P.AMBIENT_T);
+  var ei3 = g3.idx(20, 30);
+  g3.setEl(20, 30, E.EMBER); g3.temp[ei3] = 900; g3.nextTemp[ei3] = 900;
+  g3.setEl(21, 30, E.TNT, P.AMBIENT_T);
+  for (var t4 = 1; t4 <= 600; t4++) e3.step();
+  assert(count(g3, E.TNT) === 0, 'EMBER（900°C ≥ TNT 自燃点）应经 adjHot 引爆炸药，实得残留 ' + count(g3, E.TNT));
+  assert(count(g3, E.EMBER) === 1, '爆炸不应销毁 EMBER（同 WALL 豁免），实得 ' + count(g3, E.EMBER));
 });
 
 /* ============================================================

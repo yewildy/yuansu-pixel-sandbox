@@ -102,8 +102,9 @@ tickId = ++tick
 3  Reactions.reactionPass §8    爆炸→灭火→燃烧→腐蚀→溶解→克隆/病毒/水源泉（§15.4 优先级；含 §9.2 蔓延 + §9.6 耗氧、R19 出水）
 4  Biology.lifePass       §10   严格生态：种子发芽 / 植物生长 / 枯萎 / 病毒（PLANT-MODEL）
 5  Thermal.diffuse        §6.1  导热（**双轨配对系数**）→ 写入 nextTemp
+5b Thermal.contactFlux    v1.4.0 接触传热（火焰接触 + 热气体对流；diffuse 后、relax 前；⚠ 不守恒，见 COMBUSTION-MODEL §13）
 6  Transitions.process    §7    相变（读 nextTemp；潜热平台 §6.4）
-7  Thermal.relax          §6.3  向环境温度弛豫（AIR 0.0005；顶部天空热沉）
+7  Thermal.relax          §6.3  向环境温度弛豫（AIR 0.0005；顶部天空热沉；v1.4.0 起含燃烧温度重锚：锚定火焰→FUEL.burnTemp、EMBER→900）
 8  grid.commitTemp        温度钳制 + 回写 temp（替代 §1.2 的 clearFlags / swap）
 9  agePass                §4.3  寿命 / decayTo（FIRE/SMOKE/STEAM）+ §9.2 燃料寿命/§9.3 残灰（缺氧窒息不造氧）
 10 Wind.windPass          §11   轻质粉末空中漂移（+ 对流已在 movePass 内叠加）

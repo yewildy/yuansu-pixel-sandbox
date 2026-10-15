@@ -46,7 +46,8 @@
     var rulesTitle = el('h2'); rulesTitle.setAttribute('data-i18n', 'help.rulesTitle');
     body.appendChild(rulesTitle);
     var ul = el('ul', 'rules-list');
-    ['help.rule1', 'help.rule2', 'help.rule3', 'help.rule4', 'help.rule5', 'help.rule6'].forEach(function (k) {
+    /* v1.4.0：rules 列表新增 help.rule7（永燃火种 EMBER） */
+    ['help.rule1', 'help.rule2', 'help.rule3', 'help.rule4', 'help.rule5', 'help.rule6', 'help.rule7'].forEach(function (k) {
       var li = el('li'); li.setAttribute('data-i18n', k); ul.appendChild(li);
     });
     body.appendChild(ul);

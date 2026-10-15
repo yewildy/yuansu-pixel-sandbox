@@ -12,17 +12,17 @@
   var Balance = root.YS.Balance;
   var ELS = Elements.ELEMENTS;
 
-  var EMISSIVE = new Uint8Array(31);
-  for (var i = 1; i <= 30; i++) {
+  var EMISSIVE = new Uint8Array(32);   // v1.4.0：30 → 31 种元素（新增 EMBER），表长 32
+  for (var i = 1; i <= 31; i++) {
     var em = ELS[i] ? ELS[i].emissive : 'no';
     EMISSIVE[i] = em === 'strong' ? 2 : (em === 'weak' ? 1 : 0);
   }
 
   /* 预计算三档 RGB 查找（id*3+shade） */
-  var R3 = new Uint8Array(31 * 3);
-  var G3 = new Uint8Array(31 * 3);
-  var B3 = new Uint8Array(31 * 3);
-  for (var id = 1; id <= 30; id++) {
+  var R3 = new Uint8Array(32 * 3);
+  var G3 = new Uint8Array(32 * 3);
+  var B3 = new Uint8Array(32 * 3);
+  for (var id = 1; id <= 31; id++) {
     R3[id * 3] = Palette.R[id]; G3[id * 3] = Palette.G[id]; B3[id * 3] = Palette.B[id];
     R3[id * 3 + 1] = Palette.LR[id]; G3[id * 3 + 1] = Palette.LG[id]; B3[id * 3 + 1] = Palette.LB[id];
     R3[id * 3 + 2] = Palette.DR[id]; G3[id * 3 + 2] = Palette.DG[id]; B3[id * 3 + 2] = Palette.DB[id];

@@ -1,5 +1,5 @@
 /*
- * elements.js — 30 种元素全属性（docs/PHYSICS.md §4）+ 配色（docs/ART.md §2.5）
+ * elements.js — 31 种元素全属性（docs/PHYSICS.md §4）+ 配色（docs/ART.md §2.5）
  *   元素 ID 即 colorIndex；与 ART.md / PHYSICS.md 严格一致。
  *   零依赖、无 DOM。
  */
@@ -144,10 +144,20 @@
 
     [30, 'TNT', '炸药', 'static', 'solid', 1300, 0, 0, 1300, 0.20, 2.0,
       1.00, 180, null, null, null, null, null, null, 0, -1, null, 0, null,
-      '#C0272D', '#E04A3A', '#8A1518', 'no', 1.00, true, false, 'stripe', false, 'special']
+      '#C0272D', '#E04A3A', '#8A1518', 'no', 1.00, true, false, 'stripe', false, 'special'],
+
+    /* id 31：EMBER「永燃火种」（v1.4.0 新增，B2；用户诉求"点一下火就可以一直在那里烧"）
+     *   静态固体（不移动、不老化、lifetime=-1）、k=8.00 利于导热（当炉子）、
+     *   自发光 strong + anim（视觉上是一块持续发亮的炭火）。
+     *   行为：温度恒 900°C（thermal.js relax 钳制，同锚定火焰机制）；每 tick 以
+     *   EMBER.IGNITE_P 点燃 4 邻域非气态可燃物；不耗氧、不灭、不被水浇灭。
+     *   爆炸中幸存（reactions.js explosionPass 豁免，同 WALL）。 */
+    [31, 'EMBER', '永燃火种', 'special', 'solid', 700, 0, 0, 1500, 8.00, 4.0,
+      0, null, null, null, null, null, null, null, null, -1, null, 0, null,
+      '#FF7A1A', '#FFB35C', '#B34700', 'strong', 1.00, true, true, null, false, 'special']
   ];
 
-  var ELEMENTS = new Array(31);
+  var ELEMENTS = new Array(32);
   var ID = {};
   var LIST = [];
   var byKey = {};
@@ -181,7 +191,7 @@
   }
 
   // 名称 → ID 解析（供物理表 meltTo/boilTo/solidifyTo/decayTo 用字符串引用时）
-  for (var m = 1; m <= 30; m++) {
+  for (var m = 1; m <= 31; m++) {
     var e2 = ELEMENTS[m];
     e2.meltTo = e2.meltTo ? ID[e2.meltTo] : 0;
     e2.boilTo = e2.boilTo ? ID[e2.boilTo] : 0;
@@ -203,19 +213,19 @@
   GROUPS.forEach(function (g) { GROUPED[g] = []; });
   LIST.forEach(function (el) { (GROUPED[el.group] || GROUPED.none).push(el); });
 
-  // 快速查找数组
-  var conductivityTable = new Float32Array(31);
-  var specificHeatTable = new Float32Array(31);
-  var densityTable = new Float32Array(31);
-  var movableTable = new Uint8Array(31);
+  // 快速查找数组（v1.4.0：30 → 31 种元素，表长 32）
+  var conductivityTable = new Float32Array(32);
+  var specificHeatTable = new Float32Array(32);
+  var densityTable = new Float32Array(32);
+  var movableTable = new Uint8Array(32);
   /* v1.2.0：体积热容 C = 质量比热 × 密度（J/(m³·K)）。
    * 这是"空气热不热得起来"的关键量 —— 旧的对称温度交换（守恒 ΣT）等价于假设所有格子热容相等，
    * 于是 1 格 1200 ℃ 岩浆的热量被整屏空气摊薄，稳态空气只有 30–40 ℃（用户实测：空气不导热）。
    * 真实体积热容：空气 1.2e3，水 4.19e6，岩石 2.18e6 —— 差三个数量级。
    * 用 C 加权后，小热容的空气会被热源迅速拉到接近热塬温度，而热源几乎不降温（见 PHYSICS-AIR §14）。 */
-  var volHeatTable = new Float32Array(31);
-  var invVolHeatTable = new Float32Array(31);
-  for (var q = 1; q <= 30; q++) {
+  var volHeatTable = new Float32Array(32);
+  var invVolHeatTable = new Float32Array(32);
+  for (var q = 1; q <= 31; q++) {
     var e3 = ELEMENTS[q];
     conductivityTable[q] = e3.conductivity;
     specificHeatTable[q] = e3.specificHeat;

@@ -30,17 +30,18 @@
   }
 
   /* 燃料 id → 参数表（docs/COMBUSTION-MODEL.md §6.1）。
-   * latent 存的是元素 id，故惰性建一张 id 索引表，避免热路径字符串查表。 */
+   * latent 存的是元素 id，故惰性建一张 id 索引表，避免热路径字符串查表。
+   * v1.4.0：表长 31 → 32（新增第 31 号元素 EMBER；EMBER 不是燃料，查表返回 null）。 */
   var FUEL_BY_ID = null;
   function fuelOf(id) {
     if (FUEL_BY_ID === null) {
-      FUEL_BY_ID = new Array(31);
-      for (var k = 1; k <= 30; k++) {
+      FUEL_BY_ID = new Array(32);
+      for (var k = 1; k <= 31; k++) {
         var key = ELS[k] ? ELS[k].key : null;
         FUEL_BY_ID[k] = (key && Balance.FUEL[key]) ? Balance.FUEL[key] : null;
       }
     }
-    return (id >= 1 && id <= 30) ? FUEL_BY_ID[id] : null;
+    return (id >= 1 && id <= 31) ? FUEL_BY_ID[id] : null;
   }
 
   /* §9.1 条件 3（修订）：目标格半径 R（Chebyshev，默认 2）内存在 AIR(1) 视为通气。**仅 AIR 算氧**。
@@ -186,7 +187,7 @@
          * 但现实中 1200℃ 的岩浆接触 TNT 必然瞬爆（TNT 自燃温度仅约 160~200℃）。 */
         if (grid.temp[i] >= Balance.TNT.IGNITE_T || adjFire(grid, i) || adjHot(grid, i)) {
           grid.reactStamp[i] = tick;
-          EQ[tail] = i; EQD[tail] = 0; tail++;
+          if (tail < EQ.length) { EQ[tail] = i; EQD[tail] = 0; tail++; }   // v1.4.0：防御性边界（大网格全 TNT 时不越界）
         }
       }
     }
@@ -204,7 +205,7 @@
           var xx = cx + dx; if (xx < 0 || xx >= w) continue;
           var j = yy * w + xx;
           e = el[j];
-          if (e === ID.WALL) continue;
+          if (e === ID.WALL || e === ID.EMBER) continue;   // v1.4.0：墙与永燃火种在爆炸中幸存
           if (e === 1) { bumpTemp(grid, j, Balance.TNT.TEMP_BOOST); continue; }
 
           /* 半径内触发链式（TNT / GUNPOWDER / GAS） */
@@ -339,6 +340,29 @@
           continue;
         }
 
+        /* --- EMBER：永燃火种（v1.4.0 新增，第 31 号元素，B2）---
+         * 游戏性热源（用户诉求"点一下火就可以一直在那里烧"）：
+         *   · 不耗氧、不灭、不被水浇灭（R1 灭火只对 FIRE 生效，天然满足）；
+         *   · 每 tick 以 EMBER.IGNITE_P 概率点燃 4 邻域可燃物（flammability>0 且非气态 ——
+         *     与 adjFlammableSolid 判据一致：GAS 瓦斯保持爆燃扩散，不钉死）；
+         *   · 温度由 thermal.js relax 钳制到 EMBER.TEMP=900（燃烧重锚，见 A1）。 */
+        if (e === ID.EMBER) {
+          nb = grid.fill4(i);
+          for (k = 0; k < 4; k++) {
+            n = nb[k]; if (n < 0) continue;
+            t = el[n];
+            if (t === 1) continue;
+            if (grid.reactStamp[n] === tick) continue;
+            var fe2 = ELS[t];
+            if (!(fe2.flammability > 0)) continue;
+            if (fe2.state === 'gas') continue;              // 不点燃气态可燃物（瓦斯）
+            if (RNG.hash01(n % w, (n / w) | 0, ID.EMBER * 89 + tick) < Balance.EMBER.IGNITE_P) {
+              ignite(grid, n, tick);
+            }
+          }
+          continue;
+        }
+
         /* --- ACID：腐蚀 R8/R9/R10 --- */
         if (e === ID.ACID) {
           nb = grid.fill4(i);
@@ -346,8 +370,11 @@
             n = nb[k]; if (n < 0) continue;
             t = el[n];
             if (t === ID.METAL) {
+              /* v1.4.0（用户拍板"直接消失就行"）：酸蚀金属一律变 AIR（1）。
+               * 旧实现 30% 概率变 GAS（氢气）——观感上金属被咬出缺口后还咕嘟咕嘟冒可燃气体，
+               * 既容易连环引爆又偏离"腐蚀掉"的直觉；现直接消失，酸液消耗逻辑不变。 */
               if (RNG.hash01(x, y, ID.ACID * 61 + tick) < Balance.ACID.ETCH_METAL_P) {
-                el[n] = RNG.hash01(x, y, tick * 13 + 5) < 0.3 ? ID.GAS : 1;
+                el[n] = 1;
                 grid.age[n] = 0; grid.latent[n] = 0; grid.reactStamp[n] = tick;
                 bumpTemp(grid, n, 10);
                 if (RNG.hash01(x, y, tick * 17 + 9) < 0.5) { el[i] = 1; grid.reactStamp[i] = tick; break; }
@@ -411,22 +438,12 @@
           continue;
         }
 
-        /* --- SALT：R11 溶解 --- */
-        if (e === ID.SALT) {
-          nb = grid.fill4(i);
-          for (k = 0; k < 4; k++) {
-            n = nb[k]; if (n < 0) continue;
-            if (el[n] === ID.WATER) {
-              p = Balance.SALT.DISSOLVE_P * ELS[ID.SALT].solubility;
-              if (RNG.hash01(x, y, ID.SALT * 53 + tick) < p) {
-                el[i] = 1; grid.reactStamp[i] = tick;
-                bumpTemp(grid, n, -2);
-              }
-              break;
-            }
-          }
-          continue;
-        }
+        /* --- SALT：R11 溶解 —— **v1.3.0 起整段移除**（用户拍板 #1：盐不溶解） ---
+         * 旧实现：SALT 邻接 WATER 时以 p = SALT.DISSOLVE_P × solubility 直接变 AIR（凭空消失）。
+         * 这既违反质量守恒（盐凭空没了，水也没有任何变化），也与「不新增盐水元素」的约束冲突。
+         * 现行为：SALT 入水后保持固体颗粒，按密度 2170 > 1000 沉入水底并堆积，可再次拾取/搬运。
+         * 如日后放开 30 元素上限，正确做法是新增 SEAWATER 元素（SALT+WATER→SEAWATER，可逆蒸发）。 */
+        if (e === ID.SALT) continue;
 
         /* --- VIRUS：R15/R16 --- */
         if (e === ID.VIRUS) {

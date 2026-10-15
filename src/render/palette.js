@@ -29,7 +29,7 @@
     special: { base: 0.4, light: 0.3, dark: 0.3 }
   };
 
-  var N = 31;
+  var N = 32;                      // v1.4.0：30 → 31 种元素（新增 EMBER），表长 32
   var R = [null], G = [null], B = [null];           // base
   var LR = [null], LG = [null], LB = [null];        // light
   var DR = [null], DG = [null], DB = [null];        // dark

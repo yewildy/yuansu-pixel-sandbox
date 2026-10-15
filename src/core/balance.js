@@ -34,6 +34,17 @@
     LATENT_TICKS_SNOW: 4,
     LATENT_TICKS_LN2: 6,
     MAX_EXPLOSION_CELLS: 2000,
+    /* v1.4.0 接触传热（thermal.js::contactFlux，见 docs/COMBUSTION-MODEL.md v1.4.0 补记）：
+     * 热气体对流传热的最低温度门槛与系数。CA 中 1 格气体是"对流团"的代理 —— 它持续被
+     * 火焰/热源补给，故可把热量压进邻接的非气体格（锅上方热空气层加热锅底的关键）。
+     * GAS_FLUX_MIN_T=100：只有明显炽热的气体才参与（室温空气不加热周围物体）。
+     * GAS_CONTACT_K=0.05：任务书原稿为 0.02，实测该值下「铁锅+柴火、火隔着 3 格气层
+     * 烤锅底」（_diag_water.js 场景 4）水温只有 74.3°C —— 热气体对流是此布局下唯一的
+     * 传热通道，0.02 太弱；上调到 0.05 后实测 116°C（≥90 验收线），时间常数约 20 tick，
+     * 与"对流团持续拍打表面"的离散近似相符。⚠ 本项为 modeling 近似，该 pass 不守恒
+     * （能量来自火焰化学 reservoir），详见 COMBUSTION-MODEL.md。 */
+    GAS_FLUX_MIN_T: 100,        // 热气体参与接触传热的最低温度（°C）
+    GAS_CONTACT_K: 0.05,        // 热气体 → 4 邻域非气体格的传热系数（每 tick；0.02→0.05 见上注）
 
     /* §14.2b 导热模型（v1.2.0 重写，见 docs/PHYSICS-AIR.md §14）
      * 旧模型 = 对称温度交换（守恒 ΣT），等价于"所有格子热容相等"：
@@ -90,7 +101,12 @@
   var STONE = { MELT_T: 1200, MELT_SLOPE: 0.005, MELT_P_MAX: 0.30 };
   var GLASS = { MELT_T: 1400, MELT_P: 0.02 };
   var METAL = { MELT_T: 1500, MELT_P: 0.02 };
-  var SALT = { MELT_T: 801, MELT_P: 0.02, DISSOLVE_P: 0.02 };
+  /* v1.3.0（用户拍板 #1）：**盐不溶于水**。
+   * 现实里盐会溶解成盐水；但本作维持「30 元素」的硬约束，不新增「盐水 / SEAWATER」元素，
+   * 于是取最保守也最不容易被误读的行为：**盐始终保持固体颗粒**，入水后照样沉底、堆积、可再捞出。
+   * （Powder Game 的做法是新增独立的 Salt-water 元素；本作不做溶解，见 docs/PAIRWISE-REPORT.md §4。）
+   * DISSOLVE_P 保留为 0，仅为兼容旧存档/外部引用，代码中已不再读取。 */
+  var SALT = { MELT_T: 801, MELT_P: 0.02, DISSOLVE_P: 0 };
   /* SAND 的玻璃化（v1.1.0，见 docs/PHYSICS.md §7.7）：
    *  · GLASS_CONTACT_P / GLASS_CONTACT_COST —— **主规则：接触反应 R20**。
    *    LAVA 4 邻接 SAND → SAND 以 p=0.02/tick 变 GLASS，同时 LAVA 侧 −20 °C（玻璃化耗能）。
@@ -117,6 +133,11 @@
     SMOTHER_EXTRA: 3,          // 不通气时 age 额外增速（寿命缩至 1/(1+该值)）
     ANCHOR_FUEL_FIRE: true,    // latent>0 的 FIRE 是否锚定（不上升/不受风）
     MAX_BURN_CELLS: 8000,      // 同时 FIRE 格数上限（性能护栏）
+    /* v1.4.0 火焰接触/辐射传热系数（thermal.js::contactFlux）：
+     * FIRE 格 → 4 邻域非气体格的离散近似传热（火舌舔舐固体/液体的直接加热）。
+     * 只加热不冷却（源温 ≤ 目标温时跳过），公式天然保证不超过热源温度。
+     * ⚠ 该 pass 不守恒（能量来自燃料燃烧的化学 reservoir），见 docs/COMBUSTION-MODEL.md。 */
+    CONTACT_K: 0.06,
     /* 兼容保留：旧「一次性耗氧」残余灰概率表（新模型改由 FUEL.channelP 决定，此项不再被 agePass 使用） */
     RESIDUE_ASH: { WOOD: 0.6, PLANT: 0.3, COAL: 0.5, OIL: 0.2, GUNPOWDER: 0.1, GAS: 0.0 }
   };
@@ -142,8 +163,19 @@
   };
   var ACID = { ETCH_METAL_P: 0.05, ETCH_STONE_P: 0.02, ETCH_PLANT_P: 0.02 };  // ETCH_PLANT_P = S-ACID（新增）
   /* IGNITE_T：TNT 自燃温度（真实值约 160~200℃，取 180）。
-   * 引爆 = 自身达此温度 **或** 4 邻域存在 FIRE / 达此温度的热体（岩浆）。见 PHYSICS-AIR.md 附录 C。 */
-  var TNT = { RADIUS: 6, CHAIN_MAX: 8, TEMP_BOOST: 400, P_FIRE: 0.6, IGNITE_T: 180 };
+   * 引爆 = 自身达此温度 **或** 4 邻域存在 FIRE / 达此温度的热体（岩浆）。见 PHYSICS-AIR.md 附录 C。
+   * v1.4.0 增强（用户反馈"爆炸范围太小基本没作用"）：RADIUS 6→10（破坏半径做够，
+   * 半径 10 ≈ 380 格/发；MAX_EXPLOSION_CELLS=2000 的 processed 上限保证链式不失控），
+   * TEMP_BOOST 400→600（更猛的火风暴），P_FIRE 0.6→0.45（多抛掷少焚化 ——
+   * 旧值把半径内一半格子直接变火，看不出"炸飞"的效果），CHAIN_MAX 8→12（长链式）。
+   * Sprint C 会再加压强冲击波，这里先把破坏半径做够。 */
+  var TNT = { RADIUS: 10, CHAIN_MAX: 12, TEMP_BOOST: 600, P_FIRE: 0.45, IGNITE_T: 180 };
+
+  /* v1.4.0 EMBER「永燃火种」（第 31 号元素，用户明确要求"点一下火就可以一直在那里烧"）：
+   *   TEMP     —— 恒温 900°C（thermal.js relax 中钳制，与锚定火焰同一机制）；
+   *   IGNITE_P —— 每 tick 点燃 4 邻域非气态可燃物的概率。
+   * EMBER 自身不耗氧、不灭、不被水浇灭（R1 灭火只对 FIRE 生效）——游戏性热源。 */
+  var EMBER = { TEMP: 900, IGNITE_P: 0.5 };
 
   /* §14.5 生命 / 流量 / 风（严格生态：见 docs/PLANT-MODEL.md） */
   var SEED = {
@@ -157,7 +189,18 @@
     MOIST_RADIUS: 2            // 新增：湿度检测半径
   };
   var PLANT = {
-    GROW_P: 0.02,              // h=0 时的向上生长概率
+    /* v1.4.0：GROW_P 0.02 → 0.08（向上生长加速，用户实测"长得太慢"）。
+     * 保留 ×(1 − hh/CAPILLARY_HEAD) 衰减与 CAPILLARY_HEAD=80 软上限。 */
+    GROW_P: 0.08,              // h=0 时的向上生长概率
+    /* v1.4.0 新增 VINE_P：横向（藤蔓）蔓延概率（对齐 Powder Game 的 Vine——
+     * "only grows sideways and up, never down"，只向侧上生长）。
+     * 模型 = **贴地蔓（stolon）**：匍匐茎贴着基底向侧方延伸（发起格必须贴地，
+     * latent 标记为 1、本身不向上抽枝），不受 CAPILLARY_HEAD 限制（那不是垂直吸水），
+     * 但受 MAX_COLONY 限制，且与向上生长共用 rooted + hasWater + 耗水三门闸。
+     * 支撑条件较任务书原稿"地面或 PLANT"收紧为"贴地"、蔓格不抽枝 —— 均为 v1.4.0
+     * 实测所迫（否则蔓层堆叠成方块吃光根区水，V6 主柱高度 24 < 30），
+     * 实测数据与理由见 docs/PLANT-MODEL.md「横向/藤蔓生长（v1.4.0）」。 */
+    VINE_P: 0.03,              // 横向蔓延概率（每 tick，左/右由 RNG 定序）
     /* v1.2.0：CAPILLARY_HEAD 30 → 80。用户诉求「有水就可以一直往上走，没必要设置一个死亡」，
      * 且 Powder Game 的 Vine/Seed 本就没有枯萎死亡机制（见 docs/PLANT-MODEL.md §7 修订）。
      * 80 格的软上限仅为性能护栏（画面高 180），正常玩法由"根区有没有水"这一条自然封顶。 */
@@ -231,11 +274,31 @@
     CONVECT_MIN_DT: 3.0        // 触发热对流的最小温差（℃，避免逐格抖动）
   };
 
+  /* §11.4 薄液膜铺展阻尼（v1.3.0，docs/PHYSICS-AIR.md 附录 D）
+   *
+   * 背景（配对实验 small 档两条长期 flaky 的直接根因）：
+   *   单格液体（1 滴水 / 1 滴油）落在平地上时，水平铺展概率 = mobility × 0.8
+   *   （水 0.48/tick、油 0.56/tick），等效横向速度约 30 格/秒 ——
+   *   一滴水会在 1200 tick 内沿底行随机游走 40 多格，直接导致：
+   *     · SEED×WATER small：水游走离开种子 → 种子周围无湿源 → 永不发芽（FAIL）；
+   *     · OIL×FIRE   small：油游走离开火苗 → 火焰锚定消失后上浮 → 点不着（FAIL）。
+   *
+   * 物理依据：泊肃叶流 —— 受重力驱动的横向流量 ∝ h²（h = 液层厚度）。
+   *   被上方液体压着的内部格（h 大）横向流速快；暴露在气体下的自由表面薄层（h≈1）
+   *   受壁面摩擦与表面张力阻滞，几乎不流。现实中一滴水落在水平面上也基本停在原地。
+   *
+   * 判据：上方**不是**提供压力的液体（上方为气体/真空，或上方被固体压住）
+   *       且 左右下三格都没有同种液体（即孤立液滴） → 水平铺展概率 × FILM_SPREAD_F。
+   *   连续液膜（左右或下方有同类）不受影响 → 找平、连通器、灌注等宏观行为完全保留。 */
+  var LIQUID = {
+    FILM_SPREAD_F: 0.12        // 孤立薄液膜的水平铺展折扣（1 = 关闭此阻尼）
+  };
+
   var api = {
-    PHYS: PHYS, AIR: AIR, BUOY: BUOY,
+    PHYS: PHYS, AIR: AIR, BUOY: BUOY, LIQUID: LIQUID,
     WATER: WATER, STEAM: STEAM, ICE: ICE, SNOW: SNOW, LAVA: LAVA, STONE: STONE,
     GLASS: GLASS, METAL: METAL, SALT: SALT, SAND: SAND, LN2: LN2,
-    FIRE: FIRE, FUEL: FUEL, ACID: ACID, TNT: TNT,
+    FIRE: FIRE, FUEL: FUEL, ACID: ACID, TNT: TNT, EMBER: EMBER,
     SEED: SEED, PLANT: PLANT, SOIL: SOIL, VIRUS: VIRUS, CLONE: CLONE, SPRING: SPRING, WIND: WIND
   };
 

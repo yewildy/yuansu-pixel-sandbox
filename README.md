@@ -1,6 +1,6 @@
 # Yuansu Pixel Sandbox · 元素像素游戏
 
-> 一个打开网页就能玩的**落沙物理沙盒**。撒下沙子、倒进岩浆、点着一片森林 —— 30 种元素按一套**写得明明白白的物理规则**自己演化。
+> 一个打开网页就能玩的**落沙物理沙盒**。撒下沙子、倒进岩浆、点着一片森林 —— 31 种元素按一套**写得明明白白的物理规则**自己演化。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Play Online](https://img.shields.io/badge/Play-Online-success.svg)](https://yewildy.github.io/yuansu-pixel-sandbox/)
@@ -110,7 +110,7 @@ style.css
 src/
   core/                 纯逻辑，零 DOM，可在 Node 下跑单测
     balance.js          全部可调参数
-    elements.js         30 种元素属性
+    elements.js         31 种元素属性
     rng.js              确定性随机数
     grid.js             网格与内存布局
     thermal.js          导热 / 弛豫 / 潜热平台
@@ -187,7 +187,7 @@ node tests/run.js
 
 ## English
 
-**Yuansu Pixel Sandbox** ("Element Pixel Game") is a browser-based falling-sand physics sandbox. 30 elements interact under an explicitly documented physics model — temperature-driven phase changes, density-driven stratification, chain combustion, and wind.
+**Yuansu Pixel Sandbox** ("Element Pixel Game") is a browser-based falling-sand physics sandbox. 31 elements interact under an explicitly documented physics model — temperature-driven phase changes, density-driven stratification, chain combustion, and wind.
 
 - No install, no build, no dependencies. Open `index.html` and play.
 - Languages: 简体中文 (default) · English · 日本語

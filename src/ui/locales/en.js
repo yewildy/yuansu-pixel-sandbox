@@ -54,6 +54,7 @@
     'help.rule4': 'Seed germination: give it water or soil, keep 5–40°C, don’t bury it deep — sprouts in ~1.8s.',
     'help.rule5': 'Wind: global wind advects gases and light powders; hot air columns (>200°C) drive updrafts.',
     'help.rule6': 'Clone copies a neighbour every 4 ticks; Spring emits water every 6 ticks (both quota-capped).',
+    'help.rule7': 'Ember: an inextinguishable heat source; keeps igniting nearby fuel and heating its surroundings. Water cannot put it out.',
     'help.elementsTitle': 'All Elements',
     'help.closeBtn': 'Got it',
 
@@ -64,7 +65,7 @@
     'el.SEED': 'Seed', 'el.WATER': 'Water', 'el.OIL': 'Oil', 'el.LAVA': 'Lava',
     'el.ACID': 'Acid', 'el.LN2': 'Liquid Nitrogen', 'el.STEAM': 'Steam', 'el.SMOKE': 'Smoke',
     'el.FIRE': 'Fire', 'el.GAS': 'Gas', 'el.CLONE': 'Clone', 'el.VIRUS': 'Virus',
-    'el.SPRING': 'Spring', 'el.TNT': 'TNT'
+    'el.SPRING': 'Spring', 'el.TNT': 'TNT', 'el.EMBER': 'Ember'
   });
   if (typeof module === 'object' && module.exports) module.exports = I18N.DICTS['en'];
 })(typeof globalThis !== 'undefined' ? globalThis : this);
