@@ -86,15 +86,26 @@
 
     /* v1.6.1 气流可视化：把 i→j 的气流方向**同时**写在 i 与 j 两格（方向由 (x,y) 坐标算，
      * 不按索引差猜）。位标 1=E 2=W 4=N 8=S（N=向上= y 减小）。相邻四邻置换通常只触发
-     * 一组水平或垂直位；对角置换会同时置两方向位。纯 cosmetic，零分配。 */
+     * 一组水平或垂直位；对角置换会同时置两方向位。纯 cosmetic，零分配。
+     *
+     * ★v1.6.7 语义改为**覆盖写**（fd[i] = di 而非 |= di）：
+     *   旧语义是"累积位标、只 OR 不清零"（全仓库只有 clear() 与读档时清）。后果是：热羽每 tick
+     *   竖直置换 → N/S 位一旦置上就**永久残留** → 「这一格最近一次位移是水平的」在旧语义下
+     *   **结构上无法表达**（V30 判据②「纯水平 = 含 E/W 位且无 N/S 位」因此恒为 0，实测坐实）。
+     *   新语义：flowDir = **最近一次**位移的方向；"是否新鲜"仍由 moveStamp 判定（职责分离）。
+     *   为什么**不**改成 engine 每 tick 清零：那会让渲染拖影的可见期从 FLOW_FRESH_TICKS=10 tick
+     *   塌缩成 1 tick（moveStamp 之外没有第二个"多久之前"的来源），砍掉已验收的玩家可见功能。
+     *   单次调用内仍需累加（对角置换要同时置水平位与垂直位），故先算 di/dj 再一次赋值。 */
     g.markFlow = function (i, j) {
       var w = this.w, fd = this.flowDir;
       var xi = i % w, xj = j % w;
-      if (xj > xi) { fd[i] |= 1; fd[j] |= 2; }
-      else if (xj < xi) { fd[i] |= 2; fd[j] |= 1; }
       var yi = (i / w) | 0, yj = (j / w) | 0;
-      if (yj < yi) { fd[i] |= 4; fd[j] |= 8; }
-      else if (yj > yi) { fd[i] |= 8; fd[j] |= 4; }
+      var di = 0, dj = 0;
+      if (xj > xi) { di |= 1; dj |= 2; }
+      else if (xj < xi) { di |= 2; dj |= 1; }
+      if (yj < yi) { di |= 4; dj |= 8; }
+      else if (yj > yi) { di |= 8; dj |= 4; }
+      fd[i] = di; fd[j] = dj;
     };
 
     /* 将 src 移入空位 dst（dst 必须是 EMPTY），源格变为 EMPTY 并归环境温 */

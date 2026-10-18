@@ -1,12 +1,13 @@
 /*
- * pressure.js — 压强系统（v1.6.1，Phase 3；真源 docs/PRESSURE-MODEL.md）
+ * pressure.js — 压强系统（v1.6.1，Phase 3；v1.6.6 加静压头；真源 docs/PRESSURE-MODEL.md）
  *
  * 用户诉求：「金属绕一个圈，圈内圈外压强不一样 → 会**慢慢**变形成圆形（现实里先在
  * 某处突出或破掉）；空气流动也可以做成因为压强变化而变化 —— 就是联动。」
  *
  * pressurePass(grid, ctx) 三步：
  *   1 衰减    : press / stress 各乘衰减系数（为 0 时跳过整条循环）。
- *   2 压差流动 : 仅气体格（state==='gas'，含 AIR）。总压 P_i = P0×(T_i+273)/(amb+273) + press[i]。
+ *   2 压差流动 : 仅气体格（state==='gas'，含 AIR）。总压
+ *                 P_i = P0×(T_i+273)/(amb+273) + press[i] + HEAD_K×head[i]（横向分支才加静压头）。
  *               找 4 邻中**总压最小且可进入（气体）**的邻居 j；P_i−P_j > FLOW_EPS 时以
  *               p=min(1,ΔP×FLOW_K) 与 j 交换（grid.swap + moveStamp 双边置 tick +
  *               **flowDir 双边置方向位**，与 Phase 2 约定一致；冲击压随气体平流 → 冲击波前）。
@@ -25,6 +26,17 @@
  * 性能：零 DOM、零热路径分配、确定性（salt 与既有模块错开）。
  *   等压惰性跳过：step 2 只处理"温度偏离环境（|ΔT|>0.05）或有冲击压"的气体格 →
  *   空画布（全环境温空气）近似零成本；step 3 只处理固体墙格。
+ *
+ * ★v1.6.6 静压头（HEAD_K）—— 闭合对流环缺失的第四段「底部回流」（规格
+ *   docs/CONVECTION-SPEC.md §2.1 C1-d / §5 冲突 5；用户拍板 Plan A）。
+ *   物理：重力场里高度 y 处的压强 = 顶部基准压 + 上方气柱重量的积分，
+ *        P(y) = P_top + ∫ ρ(y')·g·dy'
+ *   于是**同一高度上并列的两根气柱只要密度不同，底部压强就不同** —— 冷柱（ρ 大）在底部
+ *   积累更多重量 → 底部压强更高 → 在底部驱动「冷 → 热」的横向流。这就是烟囱效应 / 热虹吸，
+ *   也正是「热压只推热→冷、浮力只有竖直分量」所缺的那个驱动源。
+ *   反向约束（实现必须成立，否则是 bug）：
+ *     · 均匀密度场 → 每根柱子的静压头相同 → **不产生任何横向流**（静水平衡）；
+ *     · 竖直方向不应被静压头驱动（它被引力抵消）→ **静压头只进入横向分支的 ΔP**。
  */
 (function (root) {
   'use strict';
@@ -73,6 +85,73 @@
   var DEV_EPS = 0.05;    // 温度偏离环境的"等压惰性跳过"阈值（远小于 DEFORM_MIN_DP 对应的压差）
   var EPS_IMPULSE = 0.02; // 冲击压驱动流动的最小压差（小，保证冲击波顺畅外传）
 
+  /* ============================================================
+   * ★ 静压头场 head[i]（v1.6.6，Plan A 烟囱效应）
+   *
+   * 定义（**表压口径**，这是本实现与"逐列积分字面读法"的唯一实质差别，理由见下）：
+   *     ρ_rel(T) = (amb + 273) / (T + 273)          // 环境温空气 ρ=1；热 → <1
+   *     head[i]  = Σ_{气柱在 i 正上方} ( ρ_rel − 1 )
+   * 即「以**同高度的环境密度气柱**为参考的表压」。为什么减 1（而不是直接累加 ρ_rel）：
+   *   · 反向约束①要求"均匀密度场不产生任何横向流"。直接累加 Σρ 时，head = 气柱长度×ρ，
+   *     而**气柱长度在不同列是不同的**（天花板/锅底会截断气柱）→ 哪怕全场等温、等密度，
+   *     断柱处两侧也会凭空出现 head 差 → 产生纯几何造成的假流。减去 1 后等温场恒为 0，
+   *     约束①在所有几何下都严格成立（实测见 _diag_hydro.js 的"均匀场对照"）。
+   *   · 减 1 的物理含义：把"参考压"取成同高度环境密度气柱的静压 —— 我们只在**同一行内**
+   *     比较 head，同一行的参考压是同一个常数，相减不影响任何横向比较；而它顺带让
+   *     "顶到天花板的 1 格气窝"拿到 ≈0（≈环境压），这正是物理上该有的值。
+   *
+   * 气柱口径（自上而下，行主序，O(n)）：
+   *   · 正上方是气体 → head[i] = head[上] + (ρ_rel(上) − 1)（正常累加）；
+   *   · 正上方**不是**气体（天花板 / 锅底 / 墙柱）→ 该格不再有自己的气柱，改为**沿本行
+   *     气体横向继承**：左→右扫一遍、右→左扫一遍，取两者平均。
+   *     为什么必须横向继承：蛇形通道的**底部横通道中段上方是一整根 68 行墙柱**，逐列口径
+   *     会让它 head=0，而两侧腿底是数十 → 底部横通道出现 head「空洞」，两条腿底都往空洞里
+   *     挤（实测把回流反向短路）。真实流体在连通气腔内是**传压**的：同一高度上、被天花板
+   *     截断的那一小段，其压强由两侧气柱沿通道插值决定 —— 双向扫描取平均就是线性插值。
+   *     （同口径下顶部横通道两侧气柱在 y=10 处都是 0 → 顶横 head 恒 0 → 不干扰顶部机制。）
+   *
+   * 存储：**模块私有 Float32Array**（按 w×h 懒扩容），每 tick 整场重写 → 无残留、不影响
+   * 确定性、不需要序列化、不占 grid 字段（故存档格式与兼容面完全不变）。
+   * 开销：两次 O(n) 扫描 + 一次 O(n) 求平均，HEAD_K=0 时整个函数不执行。
+   * ============================================================ */
+  var headBuf = null, headBuf2 = null;
+
+  function computeHead(grid, amb, hk) {
+    var w = grid.w, h = grid.h, n = grid.n, el = grid.element, temp = grid.temp;
+    if (!headBuf || headBuf.length < n) {
+      headBuf = new Float32Array(n);
+      headBuf2 = new Float32Array(n);
+    }
+    var a = headBuf, b = headBuf2;
+    var base = amb + 273;
+    var x, y, i, row;
+    /* 第一遍（左→右）：a[i] —— 顶行上方无气柱且左侧无气体 → a=0（即表压 0 = 环境压） */
+    for (y = 0; y < h; y++) {
+      row = y * w;
+      for (x = 0; x < w; x++) {
+        i = row + x;
+        if (!IS_GAS[el[i]]) { a[i] = 0; continue; }
+        if (y > 0 && IS_GAS[el[i - w]]) a[i] = a[i - w] + (base / (temp[i - w] + 273) - 1);
+        else if (x > 0 && IS_GAS[el[i - 1]]) a[i] = a[i - 1];      // 被天花板截断 → 横向继承
+        else a[i] = 0;
+      }
+    }
+    /* 第二遍（右→左）：b[i] */
+    for (y = 0; y < h; y++) {
+      row = y * w;
+      for (x = w - 1; x >= 0; x--) {
+        i = row + x;
+        if (!IS_GAS[el[i]]) { b[i] = 0; continue; }
+        if (y > 0 && IS_GAS[el[i - w]]) b[i] = b[i - w] + (base / (temp[i - w] + 273) - 1);
+        else if (x < w - 1 && IS_GAS[el[i + 1]]) b[i] = b[i + 1];
+        else b[i] = 0;
+      }
+    }
+    /* 双向平均（= 沿横通道在两根气柱之间线性插值），并在此处一次性乘上 HEAD_K */
+    for (i = 0; i < n; i++) a[i] = (a[i] + b[i]) * 0.5 * hk;
+    return a;
+  }
+
   function pressurePass(grid, ctx) {
     if (!P.ENABLE) return;
     var tick = ctx.tick;
@@ -113,6 +192,9 @@
 
     /* ---------- 步 2：压差驱动气流（联动核心） ---------- */
     var eps = P.FLOW_EPS, fk = P.FLOW_K, budget = P.MAX_MOVE_BUDGET, moved = 0;
+    /* 静压头场已含 HEAD_K 因子；HEAD_K=0（或未提供）时为 null → 与 v1.6.5 逐位一致。 */
+    var hk = P.HEAD_K || 0;
+    var hd = hk > 0 ? computeHead(grid, amb, hk) : null;
     for (y = 0; y < h; y++) {
       var row = y * w;
       for (x = 0; x < w; x++) {
@@ -128,11 +210,14 @@
         if (mst[i] === tick) continue;                 // 本 tick 已被移动过
 
         var Pi = totalP(temp[i], press[i], amb);
-        var best = -1, bestP = Infinity, q;
-        if (x > 0) { j = i - 1; if (IS_GAS[el[j]]) { q = totalP(temp[j], press[j], amb); if (q < bestP) { bestP = q; best = j; } } }
-        if (x < w - 1) { j = i + 1; if (IS_GAS[el[j]]) { q = totalP(temp[j], press[j], amb); if (q < bestP) { bestP = q; best = j; } } }
-        if (y > 0) { j = i - w; if (IS_GAS[el[j]]) { q = totalP(temp[j], press[j], amb); if (q < bestP) { bestP = q; best = j; } } }
-        if (y < h - 1) { j = i + w; if (IS_GAS[el[j]]) { q = totalP(temp[j], press[j], amb); if (q < bestP) { bestP = q; best = j; } } }
+        /* PiF = 含静压头的总压（**只用于"选哪个邻居"与横向分支的 ΔP**；竖直/冲压分支的
+         * ΔP 仍用不含静压头的 Pi−bestP —— 静压头在竖直方向被引力抵消，不许驱动竖直流）。 */
+        var PiF = hd ? Pi + hd[i] : Pi;
+        var best = -1, bestP = Infinity, bestF = Infinity, q, qf;
+        if (x > 0) { j = i - 1; if (IS_GAS[el[j]]) { q = totalP(temp[j], press[j], amb); qf = hd ? q + hd[j] : q; if (qf < bestF) { bestF = qf; bestP = q; best = j; } } }
+        if (x < w - 1) { j = i + 1; if (IS_GAS[el[j]]) { q = totalP(temp[j], press[j], amb); qf = hd ? q + hd[j] : q; if (qf < bestF) { bestF = qf; bestP = q; best = j; } } }
+        if (y > 0) { j = i - w; if (IS_GAS[el[j]]) { q = totalP(temp[j], press[j], amb); qf = hd ? q + hd[j] : q; if (qf < bestF) { bestF = qf; bestP = q; best = j; } } }
+        if (y < h - 1) { j = i + w; if (IS_GAS[el[j]]) { q = totalP(temp[j], press[j], amb); qf = hd ? q + hd[j] : q; if (qf < bestF) { bestF = qf; bestP = q; best = j; } } }
         if (best < 0) continue;
         var dP = Pi - bestP;
         /* 分两种驱动源、两套阈值（见 balance.PRESSURE 注释）：
@@ -147,8 +232,21 @@
         if (imp) {
           if (dP <= EPS_IMPULSE) continue;              // 冲击波：四方向 + 极小阈值
         } else if (horiz) {
-          /* v1.6.3：纯热压的**横向**流动 = 对流环流的水平段（见 balance.FLOW_EPS_H 注释）。
-             * 只放宽横向；竖直方向仍走下面的 upBlocked 分支，不抽走竖直热羽。 */
+          /* v1.6.5 竖直被堵场景的横向热压流（任务 T-2026-1015-B；规格 §5 冲突 4）：
+           * 门控 —— 仅当本格的**竖直去路被固体挡住**（上方或下方非气体）时才允许横向流动。
+           * 覆盖"天花板被堵住"的场景（如玩家密闭盒内的顶部缺口：热空气升到盒顶被堵 →
+           * 横向挤向缺口）。门控是安全红线：竖直热羽的上方是 AIR、永不满足门控 →
+           * 不会被横向抽走（v1.6.3 无门控调低阈值实测抽干热羽：A3/V24 回归失败、N1-9 超）。
+           * 注：规格蛇形的顶横通道**接画布顶部天空层**（唯一热出口），那里的热空气向上逸出、
+           * 不满足本门控 —— 该场景的横向过由 airPass 的「顶部边界横向铺开」承担
+           * （air.js::TOP_SPREAD_ROWS），两机制各覆盖一类场景，互不重复。 */
+          var upBlk = (y === 0) || !IS_GAS[el[i - w]];
+          var dnBlk = (y === h - 1) || !IS_GAS[el[i + w]];
+          if (!upBlk && !dnBlk) continue;
+          /* ★v1.6.6 静压头只在这里进 ΔP（横向分支，含顶横/底横通道与贴地贴顶气层）：
+           * 冷柱（ρ 大）底部 head 更高 → 在底部驱动「冷 → 热」的横向流 = 底部回流（C1-d）。
+           * 阈值用横向专用低阈值 FLOW_EPS_H。 */
+          dP = PiF - bestF;
           if (dP <= P.FLOW_EPS_H) continue;
         } else {
           if (dP <= eps) continue;
