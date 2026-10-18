@@ -71,13 +71,24 @@
   var gasUp = null, gasDn = null;
   /* 元素 → 是否气体 的查表（模块级，只建一次；元素表是静态的）。 */
   var IS_GAS = null;
+  /* "刚性壁"表：非气体**且不参与通用移动通道**的元素（石/墙/金属…）。
+   * 为什么不能用"非气体"当壁：水/灰/沙也是非气体，而 V25 的锅里正下着冷凝水滴雨 ——
+   * 那串随机散落的水滴把开放空气切成了一堆窄游程，被 ① 步误认成"烟道"（实测 776 格）。
+   * 用 movable 区分很干净：水滴 movable=1（会掉），砌出来的墙 movable=0（不动）。 */
+  var IS_RIGID = null;
 
   function ensureGasTable() {
     if (IS_GAS) return;
     var els = root.YS.Elements && root.YS.Elements.ELEMENTS;
+    var mv = root.YS.Elements && root.YS.Elements.movable;
     var n = els ? els.length : 0, i, m = n > 64 ? n : 64;
     IS_GAS = new Uint8Array(m);
-    for (i = 0; i < n; i++) IS_GAS[i] = (els[i] && els[i].state === 'gas') ? 1 : 0;
+    IS_RIGID = new Uint8Array(m);
+    for (i = 0; i < n; i++) {
+      var g = (els[i] && els[i].state === 'gas') ? 1 : 0;
+      IS_GAS[i] = g;
+      IS_RIGID[i] = (!g && (!mv || !mv[i])) ? 1 : 0;
+    }
   }
 
   function scanCavities(grid) {
@@ -460,6 +471,502 @@
       }
     }
   }
+  /* ============================================================================
+   * ★v1.6.9 开口烟道贯穿流（flueFlow）—— 两端开口的 S 形烟道
+   *
+   * 与 ductFlow（闭合空腔 → 整环 k 元轮换）是**两套物理**：
+   *   · ductFlow：四壁封死的闭合气道。因为 swap 守恒，只能让整条环一起前进一步。
+   *   · flueFlow：两端连着大气的开口气道（烟囱 / 烟道）。没有环，但有**边界源汇** ——
+   *     物质能真正离开出口、从入口补进，于是可以有净贯穿流。
+   *
+   * 为什么这是本项目里唯一可行的第二条路（定理复习，见 balance.js FLUE_* 注释）：
+   *   满格晶格上任意割集净通量恒为 0 ⇒ 每格独立掷骰的定向输运期望值一律为 0。
+   *   所以闸门粒度必须是**整条烟道一个骰子**：同一 tick 内所有车道一起前移一格。
+   *
+   * "链"上怎么做到整体前移（不像环那样能 k 元轮换）：
+   *   顺序 swap 在链上只能做出两两转置（净位移 0）或"末端一格滑到首端"（瞬移，不物理）。
+   *   ⇒ 改用 grid.moveTo 的**链式前移 + 边界源汇**：
+   *        for k = len−2 … 0:  moveTo(lane[k] → lane[k+1])
+   *     moveTo 语义 = "内容搬到目标格，源格重置为环境温 AIR"，于是
+   *       通道末端 → 真正推进大气（lane 尾部延伸 FLUE_SINK 格到开放空间 → 烟是冒出去的）；
+   *       lane[0]  → 每步由大气补进一格环境温空气。
+   *     进出各 1 格严格配平，净效果 = 通道内容整体前移一格 ⇒ 示踪剂真的贯穿。
+   *
+   * 几何识别（O(n)，只在分析帧跑）：
+   *   ① 水平/竖直**气体游程**：任一侧 ≤ FLUE_MAX_W ⇒ 该格是被固体夹住的"窄通道格"。
+   *      （S 形烟道：水平段竖直游程 9、竖直段水平游程 9 → 命中；开放空间两个游程都大 → 不命中。）
+   *   ② 窄通道 4-连通分量 = 一条烟道（取最大且长度 ≥ FLUE_MIN_LEN 的那条）。
+   *   ③ 洞口（mouth）= 通道格且四邻有"通向画布边界的开放气体"—— **大气必须是真大气**：
+   *      开放气体区要触及画布边界才算大气。密封房间里的通道因此**不会**被本机制驱动，
+   *      这在物理上是对的（密封房间里不可能有净贯穿流，守恒把它锁死了）。
+   *   ④ 洞口按连通聚类 → 取"最低的那一簇"= A、"最高的那一簇"= B。
+   *   ⑤ 车道 = 分量内 A→B 的 BFS 最短路，逐条把已用格标记掉再找下一条（顶点不相交），
+   *      最多 FLUE_MAX_LANES 条；每条尾部再向出口外的开放空间延伸 FLUE_SINK 格。
+   *   ⑥ 抽力 drive = ½·(b_A + b_B)·(y_A − y_B)（烟囱效应，见 balance.js FLUE_* 注释）；
+   *      drive < 0 时把整条车道反向（冷气从高位洞口倒灌下去）。
+   *
+   * 性能 / 回归：分析隔帧（FLUE_ANALYZE_INTERVAL）、转动每帧；无热驱动（pendingDrive=false）
+   * 且当前没有烟道时整个机制不执行；开放场景在 ① 步之后就以 nCor < FLUE_MIN_LEN 早退。
+   * ========================================================================== */
+  var narrowH = null, narrowV = null, corM = null, compM = null, compCnt = null;
+  var openId = null, openTouch = null, openSum = null, openCnt = null;
+  var corQ = null, fQ = null, fPrev = null, fSt = null;
+  var mClus = null, mouthQ = null, d2b = null, mNb = null;
+  var laneUsed = null, laneBuf = null, laneDir = null, laneOff = null, laneLen = null;
+  var laneCount = 0, laneCells = 0;
+  var flueMoved = 0, flueLanes = 0, flueOn = 0, flueDrive = 0, _flueForce = 1;
+  var _flueW = 0, _flueH = 0;
+  var fGen = 0;
+  var clusY = new Float64Array(64), clusN = new Int32Array(64);
+  var _fireId = -1;
+  /* 诊断计数器（只写不读，供 _diag_flue.js / QA 直接下断言；热路径上是几条整数赋值） */
+  var dbgCor = 0, dbgComp = 0, dbgBest = 0, dbgMouth = 0, dbgClus = 0, dbgPlen = 0, dbgOpen = 0;
+  var dbgTgt = 0, dbgQt = 0, dbgNCor2 = 0, dbgWall = 0, dbgTh = 0, dbgDmax = 0;
+
+  function fireId() {
+    if (_fireId < 0) {
+      var E = root.YS.Elements && root.YS.Elements.ID;
+      _fireId = E ? (E.FIRE || 0) : 0;
+    }
+    return _fireId;
+  }
+
+  function ensureFlue(n) {
+    if (!corM || corM.length < n) {
+      narrowH = new Uint8Array(n); narrowV = new Uint8Array(n);
+      corM = new Uint8Array(n); compM = new Int32Array(n); compCnt = new Int32Array(n);
+      openId = new Int32Array(n); openTouch = new Uint8Array(n);
+      openSum = new Float64Array(n); openCnt = new Int32Array(n);
+      corQ = new Int32Array(n); fQ = new Int32Array(n);
+      fPrev = new Int32Array(n); fSt = new Int32Array(n);
+      mClus = new Int32Array(n); mouthQ = new Int32Array(n);
+      d2b = new Uint8Array(n); mNb = new Uint8Array(n);
+      laneUsed = new Uint8Array(n);
+      /* 车道缓冲为什么只要 n 格：所有车道**顶点不相交**，总格数 ≤ 通道格数 ≤ n。 */
+      laneBuf = new Int32Array(n); laneDir = new Uint8Array(n);
+      laneOff = new Int32Array(64); laneLen = new Int32Array(64);
+      return 1;
+    }
+    return 0;
+  }
+
+  /* 相对密度（环境温空气 = 1；热 → <1）。用于烟囱抽力，与 pressure.js::computeHead 同口径。 */
+  function rhoRel(t, amb) { var d = t + 273; return d > 1 ? (amb + 273) / d : 1; }
+
+  function analyzeFlue(grid, ctx) {
+    var A = Balance.AIR;
+    var maxW = A.FLUE_MAX_W, minLen = A.FLUE_MIN_LEN;
+    var maxLanes = A.FLUE_MAX_LANES, sinkN = A.FLUE_SINK | 0;
+    laneCount = 0; laneCells = 0; flueDrive = 0; dbgWall = 0;
+    if (!(maxW > 0) || !(minLen > 0)) return;
+
+    var w = grid.w, h = grid.h, n = grid.n;
+    var el = grid.element, temp = grid.temp;
+    var amb = ctx.ambient !== undefined ? ctx.ambient : Balance.PHYS.AMBIENT_T;
+    var fid = fireId();
+    var i, j, x, y, row, xx, yy, v, q, qh, qt, ci, cx, cy, cnt, k2;
+
+    /* ---- ① 水平 / 竖直气体游程 → 窄通道标记 ---- */
+    narrowH.fill(0); narrowV.fill(0);
+    for (y = 0; y < h; y++) {
+      row = y * w; x = 0;
+      while (x < w) {
+        if (!IS_GAS[el[row + x]]) { x++; continue; }
+        xx = x;
+        while (x < w && IS_GAS[el[row + x]]) x++;
+        if (x - xx <= maxW) for (i = row + xx; i < row + x; i++) narrowH[i] = 1;
+      }
+    }
+    for (x = 0; x < w; x++) {
+      y = 0;
+      while (y < h) {
+        if (!IS_GAS[el[y * w + x]]) { y++; continue; }
+        yy = y;
+        while (y < h && IS_GAS[el[y * w + x]]) y++;
+        if (y - yy <= maxW) for (i = yy; i < y; i++) narrowV[i * w + x] = 1;
+      }
+    }
+    var nCor = 0;
+    for (i = 0; i < n; i++) {
+      /* FIRE 排除：火焰是持续放热的反应前沿，被整条搬运会破坏已标定的燃烧蔓延。 */
+      if (IS_GAS[el[i]] && el[i] !== fid && (narrowH[i] || narrowV[i])) { corM[i] = 1; nCor++; }
+      else corM[i] = 0;
+    }
+    dbgCor = nCor; dbgComp = 0; dbgBest = 0; dbgMouth = 0; dbgClus = 0; dbgPlen = 0;
+    if (nCor < minLen) return;                     // 开放场景在这里就退出（零副作用）
+
+    /* ---- ② 开放空间（非窄通道气体）洪泛：只有触及画布边界的开放区才算"大气" ----
+     *
+     * ★为什么还要"吸收密封气窝"（这一条不加，S 形烟道会被识别成 5 段互不相连的碎管）：
+     *   "窄通道"判据是"水平游程 ≤ W 或 竖直游程 ≤ W"。在**转角腔**（竖管插进横管的那一块
+     *   W×W 方腔）里，横管的长游程与竖管的长游程**叠在一起** → 两个游程都 > W → 判据判成
+     *   "不是通道" → 烟道在四个转角处被切成 5 段，最大的一段只有 1386 格、两个洞口还一样高
+     *   （抽力 = 0，实测车道数 0）。
+     *   但转角腔在几何上是**密封气窝**：它的四邻只有通道格与墙，**不连通大气**（openTouch=0）。
+     *   于是判据补一条：不触边、且贴着窄通道、且体积 ≤ W² 的密封气窝 → 整体并入通道。
+     *   体积上限 W² 是必要的闸门：比 W² 大的密封区是"房间"而不是"转角腔"（房间不该被当成
+     *   管道内壁，否则一整间屋子会被整条搬动）。
+     *   跑两遍是为了让"窝贴窝"的级联也能合进来（第二遍把第一遍新并进的格当通道基准）。 */
+    var maxPocket = maxW * maxW;
+    var nOpen = 0;
+    for (var op = 0; op < 2; op++) {
+      openId.fill(0); openTouch.fill(0);
+      nOpen = 0;
+      for (i = 0; i < n; i++) {
+        if (!IS_GAS[el[i]] || corM[i] || openId[i] !== 0) continue;
+        nOpen++;
+        qh = 0; qt = 0; corQ[qt++] = i; openId[i] = nOpen;
+        var sO = 0, cO = 0, edge = 0, nbCor = 0;
+        while (qh < qt) {
+          ci = corQ[qh++]; cy = (ci / w) | 0; cx = ci - cy * w;
+          sO += temp[ci]; cO++;
+          if (cx === 0 || cy === 0 || cx === w - 1 || cy === h - 1) edge = 1;
+          if (cx > 0) { j = ci - 1; if (openId[j] === 0 && IS_GAS[el[j]] && !corM[j]) { openId[j] = nOpen; corQ[qt++] = j; } else if (corM[j]) nbCor = 1; }
+          if (cx < w - 1) { j = ci + 1; if (openId[j] === 0 && IS_GAS[el[j]] && !corM[j]) { openId[j] = nOpen; corQ[qt++] = j; } else if (corM[j]) nbCor = 1; }
+          if (cy > 0) { j = ci - w; if (openId[j] === 0 && IS_GAS[el[j]] && !corM[j]) { openId[j] = nOpen; corQ[qt++] = j; } else if (corM[j]) nbCor = 1; }
+          if (cy < h - 1) { j = ci + w; if (openId[j] === 0 && IS_GAS[el[j]] && !corM[j]) { openId[j] = nOpen; corQ[qt++] = j; } else if (corM[j]) nbCor = 1; }
+        }
+        openSum[nOpen] = sO; openCnt[nOpen] = cO; openTouch[nOpen] = edge ? 1 : 0;
+        if (!edge && nbCor && cO <= maxPocket) {
+          for (k2 = 0; k2 < qt; k2++) corM[corQ[k2]] = 1;
+          nCor += qt;
+        }
+      }
+    }
+    dbgOpen = nOpen;
+
+    /* ---- ③ 窄通道连通分量，取最大且够长的一条 ---- */
+    compM.fill(0);
+    var nComp = 0, bestComp = 0, bestCnt = 0;
+    for (i = 0; i < n; i++) {
+      if (!corM[i] || compM[i] !== 0) continue;
+      nComp++;
+      qh = 0; qt = 0; corQ[qt++] = i; compM[i] = nComp; cnt = 0;
+      while (qh < qt) {
+        ci = corQ[qh++]; cnt++; cy = (ci / w) | 0; cx = ci - cy * w;
+        if (cx > 0) { j = ci - 1; if (corM[j] && compM[j] === 0) { compM[j] = nComp; corQ[qt++] = j; } }
+        if (cx < w - 1) { j = ci + 1; if (corM[j] && compM[j] === 0) { compM[j] = nComp; corQ[qt++] = j; } }
+        if (cy > 0) { j = ci - w; if (corM[j] && compM[j] === 0) { compM[j] = nComp; corQ[qt++] = j; } }
+        if (cy < h - 1) { j = ci + w; if (corM[j] && compM[j] === 0) { compM[j] = nComp; corQ[qt++] = j; } }
+      }
+      compCnt[nComp] = cnt;
+      if (cnt >= minLen && cnt > bestCnt) { bestCnt = cnt; bestComp = nComp; }
+    }
+    dbgComp = nComp; dbgBest = bestCnt;
+    if (bestComp === 0) return;
+    /* 重灌一次选中的分量：corQ[0..bestCnt-1] = 它的全部格 */
+    qh = 0; qt = 0;
+    for (i = 0; i < n; i++) if (compM[i] === bestComp) corQ[qt++] = i;
+    cnt = qt;
+
+    /* ---- ③b ★"烟道必须由墙围成"闸门（FLUE_WALL_FRAC）----
+     *
+     * 为什么必须加：只靠"窄通道 + ≥2 个洞口聚类"会把**开放空气中的上升羽流**也认成烟道
+     * （羽流的水平游程 ≤ FLUE_MAX_W，上下都通向大气 ⇒ 判据全过）。实测 V25 的烧水锅上方
+     * 就被架起一条 776 格的隐形输送带，凭空改写输运 → 余水 127 → 110（跌破 30% 门槛）。
+     * 物理区分很干净：**烟道的边界是墙，羽流的边界是空气**。
+     * 统计口径 = 4-邻接接触面（通道格 × 非通道邻格），数其中邻格非气体的占比。
+     * 实测：S 形烟道 ≈0.98（贴壁接触面 ≈1000、洞口空气接触面 ≈18）；锅上方羽流 ≈0.05。
+     */
+    var wallFracMin = A.FLUE_WALL_FRAC;
+    if (typeof wallFracMin === 'number' && isFinite(wallFracMin) && wallFracMin > 0) {
+      var nbTot = 0, nbSolid = 0;
+      for (q = 0; q < cnt; q++) {
+        i = corQ[q]; cy = (i / w) | 0; cx = i - cy * w;
+        if (cx > 0) { j = i - 1; if (!corM[j]) { nbTot++; if (IS_RIGID[el[j]]) nbSolid++; } }
+        if (cx < w - 1) { j = i + 1; if (!corM[j]) { nbTot++; if (IS_RIGID[el[j]]) nbSolid++; } }
+        if (cy > 0) { j = i - w; if (!corM[j]) { nbTot++; if (IS_RIGID[el[j]]) nbSolid++; } }
+        if (cy < h - 1) { j = i + w; if (!corM[j]) { nbTot++; if (IS_RIGID[el[j]]) nbSolid++; } }
+      }
+      dbgWall = nbTot > 0 ? (nbSolid * 100 / nbTot) | 0 : 0;
+      if (nbTot === 0 || nbSolid < wallFracMin * nbTot) return;
+    } else {
+      dbgWall = -1;
+    }
+
+    /* ---- ④ 洞口（mouth）= 通道格且四邻有"通向画布边界的开放气体" ---- */
+    var mCnt = 0;
+    mClus.fill(0);
+    for (q = 0; q < cnt; q++) {
+      i = corQ[q]; cy = (i / w) | 0; cx = i - cy * w;
+      var isM = 0;
+      if (cx > 0) { j = i - 1; if (IS_GAS[el[j]] && !corM[j] && openTouch[openId[j]]) isM = 1; }
+      if (!isM && cx < w - 1) { j = i + 1; if (IS_GAS[el[j]] && !corM[j] && openTouch[openId[j]]) isM = 1; }
+      if (!isM && cy > 0) { j = i - w; if (IS_GAS[el[j]] && !corM[j] && openTouch[openId[j]]) isM = 1; }
+      if (!isM && cy < h - 1) { j = i + w; if (IS_GAS[el[j]] && !corM[j] && openTouch[openId[j]]) isM = 1; }
+      if (isM) { mouthQ[mCnt++] = i; mClus[i] = -1; }   // −1 = 是洞口，尚未归类
+    }
+    dbgMouth = mCnt;
+    if (mCnt < 2) return;
+
+    /* ---- ⑤ 洞口聚类（只在洞口格之间 4-连通）---- */
+    var nCl = 0;
+    for (q = 0; q < mCnt; q++) {
+      i = mouthQ[q];
+      if (mClus[i] !== -1) continue;
+      nCl++;
+      if (nCl >= 64) break;
+      qh = 0; qt = 0; corQ[qt++] = i; mClus[i] = nCl;
+      while (qh < qt) {
+        ci = corQ[qh++]; cy = (ci / w) | 0; cx = ci - cy * w;
+        if (cx > 0) { j = ci - 1; if (mClus[j] === -1) { mClus[j] = nCl; corQ[qt++] = j; } }
+        if (cx < w - 1) { j = ci + 1; if (mClus[j] === -1) { mClus[j] = nCl; corQ[qt++] = j; } }
+        if (cy > 0) { j = ci - w; if (mClus[j] === -1) { mClus[j] = nCl; corQ[qt++] = j; } }
+        if (cy < h - 1) { j = ci + w; if (mClus[j] === -1) { mClus[j] = nCl; corQ[qt++] = j; } }
+      }
+    }
+    dbgClus = nCl;
+    if (nCl < 2) return;
+    var cA = 0, cB = 0, yA = -1e300, yB = 1e300, c;
+    for (c = 1; c <= nCl; c++) { clusY[c] = 0; clusN[c] = 0; }
+    for (q = 0; q < mCnt; q++) {
+      i = mouthQ[q]; var id2 = mClus[i];
+      if (id2 <= 0 || id2 > nCl) continue;
+      clusY[id2] += (i / w) | 0; clusN[id2]++;
+    }
+    for (c = 1; c <= nCl; c++) {
+      if (clusN[c] === 0) continue;
+      var my = clusY[c] / clusN[c];
+      clusY[c] = my;
+      if (my > yA) { yA = my; cA = c; }            // A = 最低的洞口（y 最大）
+      if (my < yB) { yB = my; cB = c; }            // B = 最高的洞口（y 最小）
+    }
+    if (cA === 0 || cB === 0 || cA === cB) return;
+
+    /* ---- ⑥ 抽力（烟囱效应）：洞口气温 vs 大气气温 ---- */
+    var sA = 0, nA = 0, sB = 0, nB = 0;
+    var bestRegion = -1, bestRC = 0;
+    for (q = 0; q < mCnt; q++) {
+      i = mouthQ[q]; cy = (i / w) | 0; cx = i - cy * w;
+      if (mClus[i] === cA) { sA += temp[i]; nA++; }
+      else if (mClus[i] === cB) { sB += temp[i]; nB++; }
+      if (cx > 0) { j = i - 1; if (openId[j] > 0 && openCnt[openId[j]] > bestRC) { bestRC = openCnt[openId[j]]; bestRegion = openId[j]; } }
+      if (cx < w - 1) { j = i + 1; if (openId[j] > 0 && openCnt[openId[j]] > bestRC) { bestRC = openCnt[openId[j]]; bestRegion = openId[j]; } }
+      if (cy > 0) { j = i - w; if (openId[j] > 0 && openCnt[openId[j]] > bestRC) { bestRC = openCnt[openId[j]]; bestRegion = openId[j]; } }
+      if (cy < h - 1) { j = i + w; if (openId[j] > 0 && openCnt[openId[j]] > bestRC) { bestRC = openCnt[openId[j]]; bestRegion = openId[j]; } }
+    }
+    var Tout = (bestRegion > 0 && openCnt[bestRegion] > 0) ? (openSum[bestRegion] / openCnt[bestRegion]) : amb;
+    var TA = nA > 0 ? sA / nA : amb, TB = nB > 0 ? sB / nB : amb;
+    var bA = rhoRel(Tout, amb) - rhoRel(TA, amb);
+    var bB = rhoRel(Tout, amb) - rhoRel(TB, amb);
+    flueDrive = 0.5 * (bA + bB) * (yA - yB);
+
+    /* ---- ⑦ 车道：沿**中轴**的 A→B 通路，逐条标记已用格再找下一条（顶点不相交）----
+     *
+     * ★★为什么必须"走中轴"（不走中轴就永远只能找到 1 条车道，实测坐实）：
+     *   普通 BFS 最短路在转角处一定**抄内角**（内角近、步数少）。抄内角的那条竖段会横跨
+     *   整条横管的**整个截面**（S 形里是 9 行全占），于是把横管**拦腰切断** —— 实测：找到
+     *   第 1 条车道（513 格）后剩余通道被切成互不相连的两半，入口再也走不到出口
+     *   （dbgTgt = −1 → 车道数恒为 1，只有 1/9 截面的物质在动）。
+     *   （试过"贴壁格延后一层的 0-1 BFS"：它只会贴着壁内侧走，**照样抄内角**，仍然切断。）
+     *   反过来，车道走**中轴**时被挖掉后剩下"两侧各若干行"，仍然连通 ⇒ 可以从中间往外
+     *   一层层剥（像削洋葱），把整个截面占满。
+     *
+     * 实现 = "净空场 + 阈值扫"：
+     *   ① d2b[i] = 通道内到最近**刚性壁**的 BFS 距离（多源 O(分量)）—— 这就是截面上的
+     *      "离壁净空"，9 格宽的通道里中轴净空 5、贴壁 1。
+     *      ★★种子只认**刚性**（IS_RIGID，见 ensureGasTable），不认"任何非通道格"。
+     *      为什么（实测踩出来的）：通道里飘着一颗冷凝水滴 / 一粒沙子，它也是"非通道格"，
+     *      以它为种子会让周围一圈的净空塌到 1~2 ⇒ 阈值扫一路掉到 2 ⇒ 车道重新贴壁 ⇒
+     *      又只剩 1 条（实测：入口注蒸汽后通道里结出的水滴把全通道净空压到 ≤4，车道数恒 1）。
+     *      换成"只认刚性壁"后，水滴不参与净空（它本来也不是车道能走的格），中轴净空恢复 5。
+     *   ② 车道只允许走 `d2b >= t` 的格；t 从 dmax 往下扫，找到第一条通路就用它。
+     *      t 只在全局单调下降 —— 于是车道天然按"中轴 → 次中轴 → … → 贴壁"的顺序剥离。
+     *   ③ 洞口（mouth）格净空恒为 1（它旁边就是大气），所以**洞口格及其邻格豁免阈值**，
+     *      否则路径在首尾两步进不去/出不来。
+     */
+    var dmax = 1;
+    dbgDmax = 0;
+    for (i = 0; i < n; i++) d2b[i] = 0;
+    qh = 0; qt = 0;
+    for (i = 0; i < n; i++) {
+      if (!corM[i]) continue;
+      cy = (i / w) | 0; cx = i - cy * w;
+      if ((cx === 0 || IS_RIGID[el[i - 1]]) || (cx === w - 1 || IS_RIGID[el[i + 1]]) ||
+          (cy === 0 || IS_RIGID[el[i - w]]) || (cy === h - 1 || IS_RIGID[el[i + w]])) { d2b[i] = 1; corQ[qt++] = i; }
+    }
+    while (qh < qt) {
+      ci = corQ[qh++]; cy = (ci / w) | 0; cx = ci - cy * w;
+      var dv = d2b[ci] + 1;
+      if (dv > 63) dv = 63;
+      if (cx > 0) { j = ci - 1; if (corM[j] && d2b[j] === 0) { d2b[j] = dv; corQ[qt++] = j; if (dv > dmax) dmax = dv; } }
+      if (cx < w - 1) { j = ci + 1; if (corM[j] && d2b[j] === 0) { d2b[j] = dv; corQ[qt++] = j; if (dv > dmax) dmax = dv; } }
+      if (cy > 0) { j = ci - w; if (corM[j] && d2b[j] === 0) { d2b[j] = dv; corQ[qt++] = j; if (dv > dmax) dmax = dv; } }
+      if (cy < h - 1) { j = ci + w; if (corM[j] && d2b[j] === 0) { d2b[j] = dv; corQ[qt++] = j; if (dv > dmax) dmax = dv; } }
+    }
+    dbgDmax = dmax;
+    /* 洞口格及其 4 邻豁免净空阈值（首尾各 1~2 步） */
+    for (i = 0; i < n; i++) mNb[i] = 0;
+    for (q = 0; q < mCnt; q++) {
+      i = mouthQ[q]; cy = (i / w) | 0; cx = i - cy * w;
+      mNb[i] = 1;
+      if (cx > 0) mNb[i - 1] = 1;
+      if (cx < w - 1) mNb[i + 1] = 1;
+      if (cy > 0) mNb[i - w] = 1;
+      if (cy < h - 1) mNb[i + w] = 1;
+    }
+
+    laneUsed.fill(0);
+    var th = dmax;
+    for (var lane = 0; lane < maxLanes; lane++) {
+      var target = -1;
+      while (target < 0 && th >= 1) {
+        fGen++;
+        qt = 0; qh = 0;
+        for (q = 0; q < mCnt; q++) {
+          i = mouthQ[q];
+          if (mClus[i] !== cA || laneUsed[i]) continue;
+          fQ[qt++] = i; fPrev[i] = -1; fSt[i] = fGen;
+        }
+        dbgQt = qt;
+        if (qt === 0) break;
+        while (qh < qt) {
+          ci = fQ[qh++];
+          if (mClus[ci] === cB) { target = ci; break; }
+          cy = (ci / w) | 0; cx = ci - cy * w;
+          if (cx > 0) { j = ci - 1; if (corM[j] && !laneUsed[j] && (d2b[j] >= th || mNb[j]) && fSt[j] !== fGen) { fSt[j] = fGen; fPrev[j] = ci; fQ[qt++] = j; } }
+          if (cx < w - 1) { j = ci + 1; if (corM[j] && !laneUsed[j] && (d2b[j] >= th || mNb[j]) && fSt[j] !== fGen) { fSt[j] = fGen; fPrev[j] = ci; fQ[qt++] = j; } }
+          if (cy > 0) { j = ci - w; if (corM[j] && !laneUsed[j] && (d2b[j] >= th || mNb[j]) && fSt[j] !== fGen) { fSt[j] = fGen; fPrev[j] = ci; fQ[qt++] = j; } }
+          if (cy < h - 1) { j = ci + w; if (corM[j] && !laneUsed[j] && (d2b[j] >= th || mNb[j]) && fSt[j] !== fGen) { fSt[j] = fGen; fPrev[j] = ci; fQ[qt++] = j; } }
+        }
+        if (target < 0) th--;
+      }
+      dbgTh = th;
+      dbgTgt = target;
+      if (target < 0) break;
+      var plen = 0;
+      for (i = target; i >= 0; i = fPrev[i]) plen++;
+      dbgPlen = plen;
+      if (plen < minLen) break;
+      if (laneCells + plen + sinkN + 1 > n) break;
+
+      var st = laneCells;
+      var idx = st + plen - 1;
+      for (i = target; i >= 0; i = fPrev[i]) { laneBuf[idx--] = i; }
+
+      /* 尾部向出口外的开放空间延伸 FLUE_SINK 格 → 烟真正冒出出口（不是凭空消失）*/
+      var lastC = laneBuf[st + plen - 1], preC = laneBuf[st + plen - 2];
+      var dxs = (lastC % w) - (preC % w), dys = ((lastC / w) | 0) - ((preC / w) | 0);
+      var total = plen, cur = lastC;
+      for (var s2 = 0; s2 < sinkN; s2++) {
+        var nx2 = (cur % w) + dxs, ny2 = ((cur / w) | 0) + dys;
+        if (s2 === 0 && (nx2 < 0 || nx2 >= w || ny2 < 0 || ny2 >= h ||
+                         !IS_GAS[el[ny2 * w + nx2]] || laneUsed[ny2 * w + nx2])) {
+          /* 直着走不出去（拐角处常见）→ 换一个朝向大气的邻格再直着走 */
+          var fx = cur % w, fy = (cur / w) | 0, found = -1;
+          if (fx > 0 && canSink(grid, cur - 1)) found = cur - 1;
+          else if (fx < w - 1 && canSink(grid, cur + 1)) found = cur + 1;
+          else if (fy > 0 && canSink(grid, cur - w)) found = cur - w;
+          else if (fy < h - 1 && canSink(grid, cur + w)) found = cur + w;
+          if (found < 0) break;
+          dxs = (found % w) - fx; dys = ((found / w) | 0) - fy;
+          laneBuf[st + total] = found; total++; cur = found;
+          continue;
+        }
+        if (nx2 < 0 || nx2 >= w || ny2 < 0 || ny2 >= h) break;
+        j = ny2 * w + nx2;
+        if (!IS_GAS[el[j]] || laneUsed[j]) break;
+        laneBuf[st + total] = j; total++; cur = j;
+      }
+      if (total < 2) break;
+
+      /* 方向位（1=E 2=W 4=N 8=S），供渲染拖影；两格都写"沿前进方向" */
+      for (v = 0; v < total - 1; v++) {
+        var a2 = laneBuf[st + v], b2 = laneBuf[st + v + 1];
+        var ax2 = a2 % w, bx2 = b2 % w, ay2 = (a2 / w) | 0, by2 = (b2 / w) | 0;
+        laneDir[st + v] = (bx2 > ax2) ? 1 : ((bx2 < ax2) ? 2 : ((by2 < ay2) ? 4 : 8));
+      }
+      laneDir[st + total - 1] = laneDir[st + total - 2];
+
+      for (v = 0; v < total; v++) laneUsed[laneBuf[st + v]] = 1;
+      if (laneCount >= 63) break;
+      laneOff[laneCount] = st; laneLen[laneCount] = total; laneCount++;
+      laneCells += total;
+    }
+
+    /* drive < 0（洞口气体重 → 下沉）→ 整条车道反向：高位洞口进、低位洞口出 */
+    if (flueDrive < 0 && laneCount > 0) {
+      for (var lc = 0; lc < laneCount; lc++) {
+        var o = laneOff[lc], L2 = laneLen[lc];
+        for (v = 0; v < (L2 >> 1); v++) {
+          var t1 = laneBuf[o + v]; laneBuf[o + v] = laneBuf[o + L2 - 1 - v]; laneBuf[o + L2 - 1 - v] = t1;
+        }
+        for (v = 0; v < L2 - 1; v++) {
+          var a3 = laneBuf[o + v], b3 = laneBuf[o + v + 1];
+          var ax3 = a3 % w, bx3 = b3 % w, ay3 = (a3 / w) | 0, by3 = (b3 / w) | 0;
+          laneDir[o + v] = (bx3 > ax3) ? 1 : ((bx3 < ax3) ? 2 : ((by3 < ay3) ? 4 : 8));
+        }
+        laneDir[o + L2 - 1] = laneDir[o + L2 - 2];
+      }
+    }
+  }
+
+  /* 车道尾部的"出口延伸格"候选：必须是**通向大气的开放气体**，且还没被别的车道占用 */
+  function canSink(grid, j) {
+    return IS_GAS[grid.element[j]] && !corM[j] && !laneUsed[j] && openId[j] > 0 && openTouch[openId[j]] === 1;
+  }
+
+  /* 转动：整条烟道**一个**骰子，中了就所有车道一起沿通道前移一格。 */
+  function rotateFlue(grid, tick, amb) {
+    var A = Balance.AIR;
+    var d = flueDrive, ad = d < 0 ? -d : d;
+    var p = (ad - A.FLUE_MIN_DRIVE) / A.FLUE_DRIVE_SCALE;
+    if (p > A.FLUE_P_MAX) p = A.FLUE_P_MAX;
+    if (!(p > 0)) return;
+    if (RNG.hash01(23, 89, tick * 7703 + 29) >= p) return;   // ← 整条烟道唯一的那个骰子
+
+    var el = grid.element, fd = grid.flowDir, stamp = grid.moveStamp;
+    flueLanes = laneCount; flueMoved = 0;
+    for (var c = 0; c < laneCount; c++) {
+      var off = laneOff[c], len = laneLen[c];
+      /* 安全门：车道是缓存的，玩家可能在这几帧里把墙画进来 / 把出口堵了。
+       * 任一一格不再是气体 → 本条车道本帧不动，并打上"需重分析"标记。 */
+      var alive = 1;
+      for (var v = 0; v < len; v++) if (!IS_GAS[el[laneBuf[off + v]]]) { alive = 0; break; }
+      if (!alive) { _flueForce = 1; continue; }
+      /* flowDir：目标格写"本步前进方向"（每格只被写一次，不会被逆序覆盖） */
+      for (v = 0; v < len - 1; v++) fd[laneBuf[off + v + 1]] = laneDir[off + v];
+      fd[laneBuf[off]] = laneDir[off];
+      /* ★链式前移：逆序 moveTo。
+       * 为什么必须逆序：k 从大到小，moveTo 把 lane[k] 的内容搬到 lane[k+1] 并把 lane[k]
+       * 重置为环境温 AIR —— 下一轮（k−1）会立刻把 lane[k−1] 的内容写进 lane[k]，
+       * 所以中间那次"重置"被覆盖掉，最终只有 lane[0] 留着重置值 = 大气补气。
+       * 正序写会把同一格内容一路复制到底并把整条清空（实测等价"整条变空气"）。 */
+      for (var k3 = len - 2; k3 >= 0; k3--) {
+        var a1 = laneBuf[off + k3], b1 = laneBuf[off + k3 + 1];
+        grid.moveTo(a1, b1, amb);
+        stamp[a1] = tick; stamp[b1] = tick;
+        flueMoved++;
+      }
+    }
+  }
+
+  function flueFlow(grid, ctx) {
+    var A = Balance.AIR;
+    var pmax = A.FLUE_P_MAX;
+    /* 悬空参数键闸门（本项目第六次栽在这上面）：非有限数值一律等同关闭。 */
+    if (typeof pmax !== 'number' || !isFinite(pmax) || pmax <= 0) {
+      if (flueOn) {
+        flueOn = 0; laneCount = 0; laneCells = 0;
+        flueMoved = 0; flueLanes = 0; flueDrive = 0; _flueForce = 1;
+      }
+      return;
+    }
+    if (!flueOn) _flueForce = 1;
+    flueOn = 1;
+    ensureGasTable();
+    if (ensureFlue(grid.n) || _flueW !== grid.w || _flueH !== grid.h) {
+      laneCount = 0; laneCells = 0; _flueW = grid.w; _flueH = grid.h; _flueForce = 1;
+    }
+    flueMoved = 0;
+    var iv = A.FLUE_ANALYZE_INTERVAL;
+    if (_flueForce || iv <= 1 || (ctx.tick % iv) === 0) { _flueForce = 0; analyzeFlue(grid, ctx); }
+    if (laneCount > 0) rotateFlue(grid, ctx.tick, ctx.ambient !== undefined ? ctx.ambient : Balance.PHYS.AMBIENT_T);
+    /* 自维持闸门：只有"真的找到了烟道"才在下一个 tick 继续自费分析；否则退回
+     * "有热驱动才跑"，避免"没有烟道也每 8 帧白扫一遍全网格"。 */
+    flueOn = laneCount > 0 ? 1 : 0;
+  }
+
   function airPass(grid, ctx) {
     var A = Balance.AIR;
     var tick = ctx.tick;
@@ -796,7 +1303,12 @@
     var gated = (iv > 1 && (ctx.tick % iv) !== 0);
     var had = pendingDrive || !!(ctx.wind && ctx.wind.strength > 0);
     airPass(grid, ctx);
-    if (had && !gated) ductFlow(grid, ctx);
+    if (gated) return;
+    if (had) ductFlow(grid, ctx);
+    /* v1.6.9 开口烟道：与 ductFlow 并列（闭合空腔 → ductFlow；两端开口 → flueFlow）。
+     * 启动条件 = 有热驱动空气 **或** 上次分析已经找到烟道（自维持，否则冷烟道永远醒不过来）。
+     * 空画布 / 纯室温场景两个条件都不成立 → 完全不执行。 */
+    if (had || flueOn) flueFlow(grid, ctx);
   }
 
   var api = {
@@ -808,6 +1320,19 @@
     ductMoved: function () { return ductMoved; },
     ductCycles: function () { return ductCycles; },
     ductLane: function () { return ductLane; },
+    /* v1.6.9 开口烟道诊断接口（仅测量用，不参与仿真） */
+    flueMoved: function () { return flueMoved; },
+    flueLanes: function () { return flueLanes; },
+    flueDrive: function () { return flueDrive; },
+    flueLaneCount: function () { return laneCount; },
+    flueLaneCell: function (k) { return (laneBuf && k >= 0 && k < laneCells) ? laneBuf[k] : -1; },
+    flueLaneCells: function () { return laneCells; },
+    flueClear: function (i) { return (d2b && i >= 0 && i < d2b.length) ? d2b[i] : -1; },
+    flueCor: function (i) { return (corM && i >= 0 && i < corM.length) ? corM[i] : -1; },
+    flueLaneLen: function (c) { return (c >= 0 && c < laneCount) ? laneLen[c] : 0; },
+    flueLaneOff: function (c) { return (c >= 0 && c < laneCount) ? laneOff[c] : 0; },
+    /* [窄通道格, 开放区数, 通道分量数, 最大分量格数, 洞口数, 洞口簇数, 首条路径长, 首条终点, 首轮BFS源数, 贴壁率%] */
+    flueDbg: function () { return [dbgCor, dbgOpen, dbgComp, dbgBest, dbgMouth, dbgClus, dbgPlen, dbgTgt, dbgQt, dbgWall, dbgDmax, dbgTh]; },
     /* 方向场读取（仅测量/QA 用，让 QA 能直接验证"底横到底朝东还是朝西"，
      * 不必再靠交换计数反推 —— 那个量已被证明恒为 0，是无效证据） */
     ductDir: function (i) { return (dirF && i >= 0 && i < dirF.length) ? dirF[i] : 0; }
