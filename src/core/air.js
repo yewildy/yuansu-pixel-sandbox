@@ -959,7 +959,17 @@
       laneCount = 0; laneCells = 0; _flueW = grid.w; _flueH = grid.h; _flueForce = 1;
     }
     flueMoved = 0;
+    /* ★分析间隔分两档（N1-9b 火场余量的修复，实测坐实）：
+     *   找到车道 → FLUE_ANALYZE_INTERVAL（8）：车道是缓存的几何，玩家改墙后要尽快跟上；
+     *   没找到车道 → FLUE_IDLE_INTERVAL（32）：**没有烟道的场景不值得频繁扫全网格**。
+     *   为什么必须分档：火场场景（5000 格火焰散布）里 FLUE 压根不会识别到烟道（车道=0、
+     *   drive=0），但 ① 步的 O(n) 游程扫描 + ② 步洪泛**每次分析照跑** —— 实测每帧摊
+     *   0.376 ms（占火场预算 6.5 ms 的 5.8%），纯浪费。挂上空闲退避后降为 ≈0.09 ms。
+     *   32 tick = 0.53 s，是"玩家刚画完一段管道到看见烟开始走"的最坏延迟，可接受。 */
     var iv = A.FLUE_ANALYZE_INTERVAL;
+    var idleIv = A.FLUE_IDLE_INTERVAL;
+    if (!(typeof idleIv === 'number') || !isFinite(idleIv) || idleIv < 1) idleIv = iv;
+    if (laneCount === 0) iv = idleIv;
     if (_flueForce || iv <= 1 || (ctx.tick % iv) === 0) { _flueForce = 0; analyzeFlue(grid, ctx); }
     if (laneCount > 0) rotateFlue(grid, ctx.tick, ctx.ambient !== undefined ? ctx.ambient : Balance.PHYS.AMBIENT_T);
     /* 自维持闸门：只有"真的找到了烟道"才在下一个 tick 继续自费分析；否则退回
