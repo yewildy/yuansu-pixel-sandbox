@@ -1,0 +1,17 @@
+==========================================================
+ _qa_perf_n19b.js —— N1-9b 计时项独立复测（QA 严守真）
+==========================================================
+  src 目录：C:\Users\Administrator\WorkBuddy\2026-10-11-11-52-28\yuansu-pixel-sandbox\src
+  机器：12 核 Intel(R) Core(TM) i5-10600KF CPU @ 4.10GHz | loadavg 0.00/0.00/0.00 | node v22.22.2
+  协议：min-of-5 ×（5 预热 + 24 计步），忠实复刻 tests/run.js:851-873
+  轮数：3（每轮各自 min-of-5）
+  FLUE_*：FLUE_P_MAX=1 FLUE_ANALYZE_INTERVAL=8 FLUE_IDLE_INTERVAL=32 FLUE_MAX_W=12 FLUE_MIN_LEN=40 FLUE_WALL_FRAC=0.8 FLUE_MAX_LANES=8 FLUE_SINK=3 FLUE_MIN_DRIVE=0.5 FLUE_DRIVE_SCALE=4
+
+  空场 320×180       min=3.116  中位=3.191  max=3.218 ms/tick   ≤4.5  ✅ 余量 31%
+  火场 320×180       min=5.644  中位=5.684  max=5.708 ms/tick   ≤6.5  ✅ 余量 13%
+  S烟道 200×130      min=2.461  中位=2.461  max=2.562 ms/tick   （无既定阈值，仅 A/B）
+
+  注：空场/火场是 N1-9b 的原场景，两者都不触发烟道识别；
+      S 烟道是新增的第三场景 —— 只有它量得到新机制的真实开销。
+
+  写入 evidence/qa-perf-n19b.json

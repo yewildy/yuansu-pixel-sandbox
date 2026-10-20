@@ -1,0 +1,229 @@
+{
+ "maxW": 12,
+ "rows": [
+  {
+   "geo": "SERPSIX",
+   "lanes": 0,
+   "dbg": [
+    1355,
+    5,
+    13,
+    496,
+    4,
+    2,
+    0,
+    0,
+    0,
+    98,
+    0,
+    0
+   ],
+   "refStop": "clusSame",
+   "expect": true,
+   "ok": false,
+   "note": "目标几何：必须认"
+  },
+  {
+   "geo": "SFLUE",
+   "lanes": 3,
+   "dbg": [
+    4453,
+    1,
+    1,
+    4777,
+    18,
+    2,
+    528,
+    -1,
+    6,
+    98,
+    6,
+    0
+   ],
+   "refStop": "ok",
+   "refLanes": 3,
+   "expect": true,
+   "ok": true,
+   "note": "正对照：认不出 ⇒ 本 harness 坏"
+  },
+  {
+   "geo": "OPN_TOP",
+   "lanes": 0,
+   "dbg": [
+    1280,
+    0,
+    1,
+    1280,
+    0,
+    0,
+    0,
+    -1,
+    6,
+    100,
+    6,
+    0
+   ],
+   "refStop": "mouth<2",
+   "expect": false,
+   "ok": true,
+   "note": "贴画布上边界的细长开放区"
+  },
+  {
+   "geo": "OPN_RIGHT",
+   "lanes": 0,
+   "dbg": [
+    960,
+    0,
+    1,
+    960,
+    0,
+    0,
+    0,
+    -1,
+    6,
+    100,
+    6,
+    0
+   ],
+   "refStop": "mouth<2",
+   "expect": false,
+   "ok": true,
+   "note": "贴画布右边界的细长开放区"
+  },
+  {
+   "geo": "OPN_LEFT",
+   "lanes": 0,
+   "dbg": [
+    960,
+    0,
+    1,
+    960,
+    0,
+    0,
+    0,
+    -1,
+    6,
+    100,
+    6,
+    0
+   ],
+   "refStop": "mouth<2",
+   "expect": false,
+   "ok": true,
+   "note": "贴画布左边界的细长开放区"
+  },
+  {
+   "geo": "OPN_BOTTOM",
+   "lanes": 0,
+   "dbg": [
+    1280,
+    0,
+    1,
+    1280,
+    0,
+    0,
+    0,
+    -1,
+    6,
+    100,
+    6,
+    0
+   ],
+   "refStop": "mouth<2",
+   "expect": false,
+   "ok": true,
+   "note": "贴画布下边界的细长开放区"
+  },
+  {
+   "geo": "OPN_CORNER",
+   "lanes": 0,
+   "dbg": [
+    2112,
+    1,
+    2,
+    1216,
+    8,
+    1,
+    0,
+    -1,
+    6,
+    95,
+    6,
+    0
+   ],
+   "refStop": "nCl<2",
+   "expect": false,
+   "ok": true,
+   "note": "同时贴两条边界（边界方向豁免最容易漏）"
+  },
+  {
+   "geo": "OPN_INNER",
+   "lanes": 0,
+   "dbg": [
+    1120,
+    0,
+    1,
+    1120,
+    0,
+    0,
+    0,
+    -1,
+    6,
+    100,
+    6,
+    0
+   ],
+   "refStop": "mouth<2",
+   "expect": false,
+   "ok": true,
+   "note": "不贴边界的内部细长开放横廊"
+  },
+  {
+   "geo": "V25POT",
+   "lanes": 0,
+   "dbg": [
+    432,
+    1,
+    15,
+    402,
+    12,
+    2,
+    0,
+    -1,
+    6,
+    84,
+    6,
+    0
+   ],
+   "refStop": "clusSame",
+   "expect": false,
+   "ok": true,
+   "note": "b 项：锅内蒸汽腔会不会被当烟道驱动"
+  },
+  {
+   "geo": "PLUME",
+   "lanes": 0,
+   "dbg": [
+    432,
+    1,
+    15,
+    402,
+    12,
+    2,
+    0,
+    -1,
+    6,
+    84,
+    6,
+    0
+   ],
+   "refStop": "clusSame",
+   "expect": false,
+   "ok": true,
+   "note": "锅口上方的开放羽流"
+  }
+ ],
+ "fails": [
+  "SERPSIX（期望识别，实测不识别）"
+ ]
+}

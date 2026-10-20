@@ -2254,6 +2254,117 @@ test('V35. ★管道环流（整环一步）：四段方向全对 + 示踪真的
 });
 
 /* ============================================================
+   V36 — v1.6.10：竖向六腿蛇形烟道（蒸汽真的流过全部六条腿并从开口冒出）
+   ★这条测试的用户背景：用户给的参考图是"竖向六腿蛇形迷宫 + 右下角水锅（三火源）+ 一个开口"，
+     要求**蒸汽从锅里出来、走完六条腿、从开口冒出**。v1.6.9 只做过水平 S 形，竖向版一直不通。
+   ★为什么当初走不通（三个坑，全部实测坐实，别再踩）：
+     ① **永久饿死 bug**：BFS 树里一个父节点有多个子节点，原先用 flueW[dest]===tick 只让第一个
+        子节点写入；corOrd 顺序固定 ⇒ 赢家永远是同一个，而赢家搬的往往只是**空气**（纯 no-op），
+        真正的烟粒每轮都被挡 ⇒ 蒸汽锋面从 t=400 到 t=3000 **一步不动**。修法：`el[a1]===AIR`
+        直接跳过 —— 搬空气没有意义却会占掉目标格。
+     ② **浮力与抽力对撞**：下行腿里常规浮力每 tick 把蒸汽往上抬 1 格，烟道再往下推 1 格，
+        净位移恒为 0。修法：engine.step 里在 movePass **之前**调 Air.flueLock 把活动烟道格
+        打上本 tick 的 moveStamp，常规浮力通道让路。
+     ③ **蒸汽走不完**：潜热预算 LATENT_MAX=255，冷空气里约 53 tick 耗尽；烟道 1 格/tick ⇒
+        最多爬 ~50 格。六腿全长 800+ 格，物理上不可能。修法：烟道内不结露（真实烟囱的设计
+        准则就是烟气全程保持露点以上，结露是故障工况）。
+   ★为什么必须带"零对照臂"：只测"开烟道时六腿有蒸汽"是不够的 —— 浮力/扩散也可能偶然把
+     一点蒸汽送到腿里。对照臂把 FLUE_P_MAX 置 0（机制完全关闭，其余一切相同），
+     实测腿1–5 恒为 0 ⇒ 六腿贯通**只能**由烟道抽力造成。
+   ============================================================ */
+test('V36. ★竖向六腿蛇形烟道：蒸汽走完六腿并从开口冒出 + 关烟道对照为零（v1.6.10）', function () {
+  var WW = 320, HH = 180;
+  var LEGW = 8, PITCH = 34;
+  var legX = function (i) { return 22 + PITCH * i; };       // 22,56,90,124,158,192
+  var TOPW = { y0: 14, y1: 16 }, TOPC = { y0: 17, y1: 21 };
+  var LEG = { y0: 22, y1: 105 };                             // 84 高
+  var BOTC = { y0: 106, y1: 110 }, OUTER2 = { y0: 111, y1: 113 };
+  var PX0 = 176, PX1 = 314, PTW = { y0: 111, y1: 114 };
+  var PIN = { y0: 115, y1: 174 }, PBT = { y0: 175, y1: 178 };
+  var WY0 = 132, WY1 = 172;
+
+  function box(g, x0, y0, x1, y1, id) {
+    for (var y = Math.max(0, y0); y <= Math.min(g.h - 1, y1); y++)
+      for (var x = Math.max(0, x0); x <= Math.min(g.w - 1, x1); x++) g.setEl(x, y, id);
+  }
+  function build() {
+    var eng = Engine.create({ w: WW, h: HH, seed: 1337 }), g = eng.grid;
+    box(g, 0, 0, WW - 1, HH - 1, E.AIR);
+    box(g, 14, TOPW.y0, 210, OUTER2.y1, E.STONE);
+    for (var i = 0; i < 6; i++) box(g, legX(i), LEG.y0, legX(i) + LEGW - 1, LEG.y1, E.AIR);
+    [[0, 1], [2, 3], [4, 5]].forEach(function (p) {
+      box(g, legX(p[0]), TOPC.y0, legX(p[1]) + LEGW - 1, TOPC.y1, E.AIR);
+    });
+    [[1, 2], [3, 4]].forEach(function (p) {
+      box(g, legX(p[0]), BOTC.y0, legX(p[1]) + LEGW - 1, BOTC.y1, E.AIR);
+    });
+    /* 开口：腿1（最左）底部打穿底外壁 */
+    box(g, legX(0), LEG.y1 + 1, legX(0) + LEGW - 1, OUTER2.y1 + 2, E.AIR);
+    /* 锅：右下角，大半锅水 + 锅底三个 EMBER 永燃火种 */
+    box(g, PX0, PTW.y0, PX1, PBT.y1, E.STONE);
+    box(g, PX0 + 4, PIN.y0, PX1 - 4, PIN.y1, E.AIR);
+    box(g, legX(5), LEG.y1 + 1, legX(5) + LEGW - 1, PIN.y0 + 2, E.AIR);   // 锅颈接腿6
+    box(g, PX0 + 4, WY0, PX1 - 4, WY1, E.WATER);
+    var fw = (PX1 - 4) - (PX0 + 4);
+    [0.18, 0.5, 0.82].forEach(function (fr) {
+      var fx = PX0 + 4 + Math.round(fw * fr);
+      box(g, fx - 2, WY1 + 1, fx + 1, WY1 + 2, E.EMBER);
+    });
+    return eng;
+  }
+  function legSteam(g, L) {
+    var c = 0;
+    for (var y = LEG.y0; y <= LEG.y1; y++)
+      for (var x = legX(L); x < legX(L) + LEGW; x++) if (g.element[y * WW + x] === E.STEAM) c++;
+    return c;
+  }
+  function rangeSteam(g, x0, x1, y0, y1) {
+    var c = 0;
+    for (var y = y0; y <= y1; y++) for (var x = x0; x <= x1; x++) if (g.element[y * WW + x] === E.STEAM) c++;
+    return c;
+  }
+  var TICKS = 1400;
+
+  /* ---- 臂 A：烟道开 ---- */
+  var eng = build(), g = eng.grid;
+  for (var t = 0; t < TICKS; t++) eng.step();
+  var legsA = [];
+  for (var L = 0; L < 6; L++) legsA.push(legSteam(g, L));
+  var topA = [[0, 1], [2, 3], [4, 5]].reduce(function (s, p) {
+    return s + rangeSteam(g, legX(p[0]), legX(p[1]) + LEGW - 1, TOPC.y0, TOPC.y1);
+  }, 0);
+  var botA = [[1, 2], [3, 4]].reduce(function (s, p) {
+    return s + rangeSteam(g, legX(p[0]), legX(p[1]) + LEGW - 1, BOTC.y0, BOTC.y1);
+  }, 0);
+  var outA = rangeSteam(g, legX(0) - 3, legX(0) + LEGW + 2, OUTER2.y1 + 1, OUTER2.y1 + 14);
+
+  var hit = legsA.filter(function (v) { return v > 0; }).length;
+  assert(hit === 6, '六条竖直腿都应出现蒸汽（烟道贯通），实得 ' + hit + '/6：' + legsA.join('/'));
+  assert(legsA.every(function (v) { return v >= 20; }),
+    '每条腿的蒸汽应 ≥20 格（不是零星几个偶然飘进去的），实得 ' + legsA.join('/'));
+  assert(topA > 0, '顶部连接廊应有蒸汽（蛇形拐弯成功），实得 ' + topA);
+  assert(botA > 0, '底部连接廊应有蒸汽（蛇形拐弯成功），实得 ' + botA);
+  assert(outA > 0, '开口（腿1 下方）应有蒸汽冒出，实得 ' + outA);
+
+  /* ---- 臂 B：FLUE_P_MAX=0（烟道完全关闭，其余一切相同） ---- */
+  var saveP = YS.Balance.AIR.FLUE_P_MAX;
+  YS.Balance.AIR.FLUE_P_MAX = 0;
+  var eng2 = build(), g2 = eng2.grid;
+  for (var t2 = 0; t2 < TICKS; t2++) eng2.step();
+  var legsB = [];
+  for (var L2 = 0; L2 < 6; L2++) legsB.push(legSteam(g2, L2));
+  var outB = rangeSteam(g2, legX(0) - 3, legX(0) + LEGW + 2, OUTER2.y1 + 1, OUTER2.y1 + 14);
+  YS.Balance.AIR.FLUE_P_MAX = saveP;                     // 还原生产值
+
+  assert(legsB[0] === 0 && legsB[1] === 0 && legsB[2] === 0 && legsB[3] === 0 && legsB[4] === 0,
+    '关闭烟道后腿1–5 应完全没有蒸汽（浮力/ diffusion 送不过去），实得 ' + legsB.join('/'));
+  assert(outB === 0, '关闭烟道后开口不应有蒸汽，实得 ' + outB);
+
+  lines.push('      └ 实测：开烟道六腿 ' + legsA.join('/') + ' ；顶廊 ' + topA + ' / 底廊 ' + botA +
+    ' / 开口 ' + outA + ' 格 ；关烟道对照 ' + legsB.join('/') + ' 开口 ' + outB);
+});
+
+/* ============================================================
   输出
    ============================================================ */
 console.log('\nYuansu Pixel Sandbox — 单元测试\n' + '='.repeat(48));

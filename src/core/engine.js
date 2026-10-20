@@ -63,6 +63,14 @@
       g.tickId = this.tick;
       var ctx = { tick: this.tick, wind: this.wind, ambient: this.ambient, cloneCreated: this.cloneCreated, springCreated: this.springCreated };
 
+      /* ★烟道"占位锁"（v1.6.10）：在 movePass **之前**把活动烟道的走廊格打上本 tick 的
+       * moveStamp，让常规浮力/沉降通道跳过它们，只由烟道抽力搬运。
+       *   为什么必须锁：实测六腿蛇形里蒸汽**净位移恒为 0** —— 下行腿里常规浮力每 tick 把蒸汽
+       *   往上抬 1 格，烟道随后再往下推 1 格，正好抵消（顶廊里 63 格蒸汽从 t=600 到 t=2400
+       *   纹丝不动）。真实烟囱的下行段里，抽力（压差梯度）本来就是**强于**浮力的那一方，
+       *   所以"烟道内抽力优先"是正确建模，不是 hack。
+       *   锁的是**上一轮分析缓存下来的**走廊（laneCount=0 时是空操作 ⇒ 无烟道场景零影响）。 */
+      Air.flueLock(g, this.tick);
       Movement.movePass(g, ctx);
       if (Waves) Waves.wavePass(g, ctx);   // v1.6.2 水面波纹（依赖移动后的水面几何；模块缺失时静默跳过）
       Air.airPass(g, ctx);
