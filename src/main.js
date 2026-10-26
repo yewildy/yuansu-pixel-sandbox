@@ -27,7 +27,7 @@
   /* v1.6.10：竖向六腿蛇形烟道蒸汽贯通（任务 T-SERP-01..06）。
    *          修掉三个实测坑：① 走廊输送的**永久饿死 bug**；② 浮力与抽力对撞；③ 蒸汽在烟道内结露。
    *          built 按用户明确要求**带小时和分钟**。 */
-  var VERSION = { v: 'v1.6.10', built: '2026-10-20 22:55' };
+  var VERSION = { v: 'v1.7.4', built: '2026-10-26 22:37' };
   YS.VERSION = VERSION;
 
   function initialTemp(id) {

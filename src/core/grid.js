@@ -19,7 +19,11 @@
       temp: new Float32Array(n),      // 官方温度场（浮点 °C；见 ADR-0001 / 审查 F17）
       nextTemp: new Float32Array(n),  // 导热工作缓冲（浮点，避免逐 tick 截断漂移；见 ADR-0001）
       age: new Uint16Array(n),
-      latent: new Uint8Array(n),
+            /* v1.7.1：Uint8 → Uint16。原因：潜热预算 LATENT_MAX 原先被**字节上限 255** 卡住，
+       * 而物理比值（潜热/显热 ≈ 11×）要求 ≈900（见 balance.js::LATENT_MAX 的推导）。
+       * 255 是"存不下"造成的，不是物理；蒸汽因此在长管道里必然半路凝完。
+       * latent 不入存档（toObject 不含它）⇒ 改宽度无兼容问题。 */
+      latent: new Uint16Array(n),
       moveStamp: new Uint32Array(n),
       reactStamp: new Uint32Array(n),
       /* v1.4.1「分子色差」tint：每格 0-4 的色号，**随 swap/moveTo 一起搬行** ——

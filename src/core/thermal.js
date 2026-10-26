@@ -79,6 +79,22 @@
     }
     var gasP = diffuse._gasP;
 
+    /* v1.7.0：「非气体」查找表（state 不是 gas 的元素，含液体/粉末/固体/真空外的全部）。
+     * 与 gasP 配合，用来识别**气体 ↔ 非气体**配对 —— 这类配对改走 GAS_SOLID_R
+     * （理由与标定见 balance.js::GAS_SOLID_R：旧公式对它恒被钳到 0.2 = 500 °C/m 的假换热）。
+     * 惰性构建一次；AIR 既不在 gasP 也不在 nonGasP（AIR-AIR 走 SELF_R 分支，先判）。 */
+    if (!diffuse._nonGasP) {
+      var ng = new Uint8Array(32);
+      for (q = 1; q <= 31; q++) {
+        var En = Elements.ELEMENTS[q];
+        if (En && En.state !== 'gas') ng[q] = 1;
+      }
+      diffuse._nonGasP = ng;
+    }
+    var nonGasP = diffuse._nonGasP;
+    var gasSolidR = Balance.PHYS.GAS_SOLID_R;
+    if (typeof gasSolidR !== 'number' || !isFinite(gasSolidR) || gasSolidR <= 0) gasSolidR = 0;
+
     for (i = 0; i < n; i++) next[i] = temp[i];
 
     for (y = 0; y < h; y++) {
@@ -95,6 +111,9 @@
               ci = C[ei]; cj = C[ej]; sum = ci + cj;
               if (ei === 1 && ej === 1) r = selfR;      // 静止空气是热的不良导体
               else if (gasP[ei] && gasP[ej]) r = gasR; // v1.5.1：气-气热惯性（蒸汽/烟/瓦斯）
+              /* v1.7.0：气 ↔ 非气体 —— 专用（纯导热量级）松弛因子，取代"恒被钳到 0.2"的
+               * 通用公式。标定依据与守恒性证明见 balance.js::GAS_SOLID_R。 */
+              else if (gasSolidR > 0 && ((gasP[ei] && nonGasP[ej]) || (gasP[ej] && nonGasP[ei]))) r = gasSolidR;
               else r = alpha * ((k[ei] + k[ej]) * 0.5) * CREF * sum * iC[ei] * iC[ej];
               if (r > rMax) r = rMax;
               f = r / sum;
@@ -123,6 +142,9 @@
               ci = C[ei]; cj = C[ej]; sum = ci + cj;
               if (ei === 1 && ej === 1) r = selfR;      // 静止空气是热的不良导体
               else if (gasP[ei] && gasP[ej]) r = gasR; // v1.5.1：气-气热惯性（蒸汽/烟/瓦斯）
+              /* v1.7.0：气 ↔ 非气体 —— 专用（纯导热量级）松弛因子，取代"恒被钳到 0.2"的
+               * 通用公式。标定依据与守恒性证明见 balance.js::GAS_SOLID_R。 */
+              else if (gasSolidR > 0 && ((gasP[ei] && nonGasP[ej]) || (gasP[ej] && nonGasP[ei]))) r = gasSolidR;
               else r = alpha * ((k[ei] + k[ej]) * 0.5) * CREF * sum * iC[ei] * iC[ej];
               if (r > rMax) r = rMax;
               f = r / sum;

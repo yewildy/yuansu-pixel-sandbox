@@ -16,6 +16,7 @@
   var Elements = root.YS.Elements;
   var Palette = root.YS.Palette;
   var Balance = root.YS.Balance;
+  var Tint = root.YS.Tint;            // v1.6.11：温度着色唯一真值来源（src/render/tint.js）
   var ELS = Elements.ELEMENTS;
 
   var EMISSIVE = new Uint8Array(32);   // v1.4.0：30 → 31 种元素（新增 EMBER），表长 32
@@ -141,17 +142,25 @@
           }
         }
 
-        /* 热力图叠加（可选，§8.4） */
-        if (opts.showHeat) {
+        /* 热力图叠加（可选，§8.4）
+         * v1.6.11：改走 src/render/tint.js（与离屏证据渲染器 _render.js 同一份逻辑），
+         * 并按元素的 heatTint 分三路着色 —— 热气体往**白**推（更亮），热固体/液体往**橙**推，
+         * 二者不再收敛到同一个颜色（docs/art/steam-visibility.md §4）。
+         * 阈值改由 Balance.PHYS.AMBIENT_T 驱动（±BAND 死区），与 _render.js 的 ambient 一致。 */
+        if (opts.showHeat && Tint) {          /* Tint 缺失时降级为不着色，而不是抛异常 */
           var temp = grid.temp;
+          var amb = (Balance && Balance.PHYS && Balance.PHYS.AMBIENT_T !== undefined)
+            ? Balance.PHYS.AMBIENT_T : 20;
           for (p = 0; p < n; p++) {
             var T = temp[p];
-            if (T > 25) {
-              var f = Math.min(1, (T - 25) / 200) * 0.5;
-              applyOverlay(buf32, p, 255, 176, 32, f);
-            } else if (T < 15) {
-              var f2 = Math.min(1, (15 - T) / 200) * 0.5;
-              applyOverlay(buf32, p, 30, 111, 184, f2);
+            if (T > amb + Tint.BAND || T < amb - Tint.BAND) {
+              var v = buf32[p];
+              var cr = v & 255, cg = (v >> 8) & 255, cb = (v >> 16) & 255;
+              var o = Tint.apply(cr, cg, cb, T, amb, Tint.MODE[el[p]]);
+              var nr = o[0] < 0 ? 0 : (o[0] > 255 ? 255 : o[0]) | 0;
+              var ng = o[1] < 0 ? 0 : (o[1] > 255 ? 255 : o[1]) | 0;
+              var nb = o[2] < 0 ? 0 : (o[2] > 255 ? 255 : o[2]) | 0;
+              buf32[p] = (0xff000000 | (nb << 16) | (ng << 8) | nr) >>> 0;
             }
           }
         }

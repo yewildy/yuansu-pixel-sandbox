@@ -76,10 +76,10 @@
 | 20 | LAVA | 岩浆 | liquid | `#F2600F` | `#FF8A34` | `#A83208` | **yes** | 1.00 |
 | 21 | ACID | 强酸 | liquid | `#8FD41E` | `#B8EC4A` | `#5E9410` | weak | 0.90 |
 | 22 | LN2 | 液氮 | liquid | `#7FD8E8` | `#B8EEF6` | `#4AA8BE` | weak | 0.90 |
-| 23 | STEAM | 水蒸气 | gas | `#C8D2DC` | `#E6EDF4` | `#9AA6B4` | no | 0.50 |
-| 24 | SMOKE | 烟 | gas | `#444B56` | `#5E6673` | `#2C313A` | no | 0.60 |
+| 23 | STEAM | 水蒸气 | gas | `#E2EDF8` | `#F8FCFF` | `#B4C8DC` | no | 0.92 |
+| 24 | SMOKE | 烟 | gas | `#4E5663` | `#68717F` | `#333A44` | no | 0.80 |
 | 25 | FIRE | 火 | gas | `#FFB020` | `#FFD64A` | `#E24A0E` | **yes** | 0.95 |
-| 26 | GAS | 瓦斯 | gas | `#CBCB78` | `#E8E8A8` | `#9E9E4C` | no | 0.35 |
+| 26 | GAS | 瓦斯 | gas | `#D2D489` | `#ECEEB4` | `#A6A85E` | no | 0.80 |
 | 27 | CLONE | 克隆体 | static | `#C24BD8` | `#E57FEF` | `#8A2BA0` | weak | 1.00 |
 | 28 | VIRUS | 病毒 | static | `#EC3E6E` | `#FF6AA0` | `#A81E54` | weak | 1.00 |
 | 29 | SPRING | 水源泉 | liquid | `#3FA9F5` | `#7CC8FF` | `#1E6FB8` | no | 0.90 |
@@ -106,9 +106,10 @@
 - 三重区分：**明度阶梯（暗/中/亮）**——这是对色盲最友好的区分方式，同时暖冷微差 + 透明度差异。
 
 **其他需注意的相邻色**
-- `STEAM #C8D2DC`（亮冷半透明） vs `SMOKE #444B56`（暗冷半透明）：靠明度拉开，均为上升气体。
+- `STEAM #E2EDF8`（**极亮冷白**，合成后亮度 215） vs `SMOKE #4E5663`（**暗冷灰**，合成后亮度 72）：明度差 143，为全调色板最大跨度的一对；均为上升气体。
+  （v1.6.11 修正：旧版 STEAM `#C8D2DC`/alpha 0.50 合成后仅 111，落在石头纹理带 91~163 正中，与石头只差 1.1%，管道里的蒸汽在画面上等于不存在。详见 `docs/art/steam-visibility.md`。）
 - `COAL #2A2A2E`（近黑固体） vs `EMPTY #0B0F17`（画布） vs `GUNPOWDER #4A3F3A`（偏暖深褐）：煤的明度略高于画布且偏冷，火药偏暖褐。
-- `SEED #A3A83C`（橄榄） vs `GAS #CBCB78`（硫黄，低透明） vs `PLANT #4AA03C`（真绿） vs `ACID #8FD41E`（亮柠檬）：色相 60/72/128/82，靠色相 + 明度 + 透明度 + 动效区分。
+- `SEED #A3A83C`（橄榄） vs `GAS #D2D489`（硫黄） vs `PLANT #4AA03C`（真绿） vs `ACID #8FD41E`（亮柠檬）：色相 60/72/128/82，靠色相 + 明度 + 透明度 + 动效区分。
 - `CLONE #C24BD8`（紫洋红，hue≈290） vs `VIRUS #EC3E6E`（玫红，hue≈340）：色相拉开 + 二者均带**脉冲斑点动效**（克隆脉冲外扩、病毒高频抖动）。
 
 ### 2.3 逐格随机色抖动规则（Per-Cell Dithering）
@@ -184,10 +185,10 @@ export const PALETTE = {
   LAVA:      { id: 20, cn:'岩浆',  cat:'liquid',  base:'#F2600F', light:'#FF8A34', dark:'#A83208', emissive:'strong', alpha:1.00, anim:true },
   ACID:      { id: 21, cn:'强酸',  cat:'liquid',  base:'#8FD41E', light:'#B8EC4A', dark:'#5E9410', emissive:'weak', alpha:0.90, anim:true, pattern:'speckle' },
   LN2:       { id: 22, cn:'液氮',  cat:'liquid',  base:'#7FD8E8', light:'#B8EEF6', dark:'#4AA8BE', emissive:'weak', alpha:0.90, pattern:'dash' },
-  STEAM:     { id: 23, cn:'水蒸气',cat:'gas',     base:'#C8D2DC', light:'#E6EDF4', dark:'#9AA6B4', emissive:'no',   alpha:0.50, anim:true },
-  SMOKE:     { id: 24, cn:'烟',    cat:'gas',     base:'#444B56', light:'#5E6673', dark:'#2C313A', emissive:'no',   alpha:0.60, anim:true },
+  STEAM:     { id: 23, cn:'水蒸气',cat:'gas',     base:'#E2EDF8', light:'#F8FCFF', dark:'#B4C8DC', emissive:'no',   alpha:0.92, anim:true, heatTint:'white' },
+  SMOKE:     { id: 24, cn:'烟',    cat:'gas',     base:'#4E5663', light:'#68717F', dark:'#333A44', emissive:'no',   alpha:0.80, anim:true, heatTint:'hold' },
   FIRE:      { id: 25, cn:'火',    cat:'gas',     base:'#FFB020', light:'#FFD64A', dark:'#E24A0E', emissive:'strong', alpha:0.95, anim:true },
-  GAS:       { id: 26, cn:'瓦斯',  cat:'gas',     base:'#CBCB78', light:'#E8E8A8', dark:'#9E9E4C', emissive:'no',   alpha:0.35, anim:true },
+  GAS:       { id: 26, cn:'瓦斯',  cat:'gas',     base:'#D2D489', light:'#ECEEB4', dark:'#A6A85E', emissive:'no',   alpha:0.80, anim:true, heatTint:'white' },
   CLONE:     { id: 27, cn:'克隆体',cat:'static',  base:'#C24BD8', light:'#E57FEF', dark:'#8A2BA0', emissive:'weak', alpha:1.00, anim:true },
   VIRUS:     { id: 28, cn:'病毒',  cat:'static',  base:'#EC3E6E', light:'#FF6AA0', dark:'#A81E54', emissive:'weak', alpha:1.00, anim:true, pattern:'speckle' },
   SPRING:    { id: 29, cn:'水源泉',cat:'liquid',  base:'#3FA9F5', light:'#7CC8FF', dark:'#1E6FB8', emissive:'no',   alpha:0.90, marker:true },

@@ -14,6 +14,10 @@
    * 22 windFactor, 23 repose,
    * 24 base, 25 light, 26 dark, 27 emissive, 28 alpha,
    * 29 dither, 30 anim, 31 pattern, 32 marker, 33 group
+   * 34 heatTint（可选，缺省 'warm'）——温度着色的"热表达"方式，见 src/render/tint.js：
+   *     'warm'  热→橙（默认，固体/液体/粉末/自发光气体）
+   *     'white' 热→白（非自发光气体：越热越白越亮，与烤热石壁的橙彻底分道）
+   *     'hold'  热→极弱暖（烟：保持暗灰，不因受热变亮，否则会被误读成火星）
    */
   var DEF = [
     /* id 1：EMPTY「空」升级为 AIR「空气」（真实参与导热/对流/流动/耗氧，见 docs/PHYSICS-AIR.md）
@@ -38,9 +42,18 @@
       0, null, 1200, 'LAVA', null, null, null, null, 0.05, -1, null, 0, null,
       '#8A8175', '#A79C8C', '#615A50', 'no', 1.00, true, false, null, false, 'solid'],
 
+    /* 玻璃 v1.6.11 可见性修正（docs/art/steam-visibility.md §10 遗留第 7 条）：
+     * 旧值 `#BCE0DC` / alpha 0.55 合成后亮度 120.2，与石头 124.4 只差 **4.2**，
+     * 而且饱和度低（R188 G224 B220 ⇒ 最大最小差只有 36），两块挨着放时
+     * "玻璃墙"和"石头墙"几乎分不开。
+     * 修正两件事（亮度只抬一点，主要靠**饱和度**解决，避开拥挤的亮度阶梯）：
+     *   ① 大幅提高青色饱和度（基色 max-min 36 → 82；合成后 23 → 61）：
+     *      玻璃现在是明确的青色，与暖米色石头在色相上几乎互补，不再依赖亮度区分；
+     *   ② alpha 0.55 → 0.70，合成亮度 120.2 → 142.1（与石头差 4.2 → 17.7）。
+     *      保留 alpha<1 是为了维持"能透过去看"的玻璃质感（0.70 仍可辨半透明）。 */
     [4, 'GLASS', '玻璃', 'static', 'solid', 2500, 0, 0, 840, 0.80, 5.5,
       0, null, 1400, 'LAVA', null, null, null, null, 0, -1, null, 0, null,
-      '#BCE0DC', '#E0F2EF', '#8FBCB7', 'no', 0.55, false, false, null, false, 'solid'],
+      '#92E0E4', '#B0ECF0', '#72C6CC', 'no', 0.70, false, false, null, false, 'solid'],
 
     [5, 'METAL', '金属', 'static', 'solid', 7800, 0, 0, 450, 8.00, 4.0,/* k 0.90 → 8.00：金属锅必须传热，见 v1.2.0 注 */
       0, null, 1500, 'LAVA', null, null, null, null, 0.10, -1, null, 0, null,
@@ -114,21 +127,42 @@
       0, null, null, null, -196, 'AIR', null, null, 0, -1, null, 0, null,/* 汽化产物 STEAM→AIR：氮气回归大气，消除"凭空造水"，见 §7.8 */
       '#7FD8E8', '#B8EEF6', '#4AA8BE', 'weak', 0.90, true, false, 'dash', false, 'liquid'],
 
+    /* v1.6.11 烟气可见性（docs/art/steam-visibility.md）：
+     * 旧值 base #C8D2DC / alpha 0.50 —— 与近黑背景 (#0B0F17) 合成后亮度仅 111，
+     * 而石头 base 亮度 130、三档纹理跨度 91~163 ⇒ 蒸汽整条分布被石头纹理带吞掉，
+     * 实测蒸汽/石头亮度均值差只有 2.9/255。
+     * 修正要点：
+     *   ① 提高 alpha（0.50→0.85）：本渲染器里 ALPHA 不是"遮挡"而是"与背景混色"，
+     *      近黑背景上低 alpha = 纯亮度损失。气体的"轻盈感"改由高明度 + 冷白 + 抖动表达。
+     *   ② 提高基色亮度（#C8D2DC→#E2EDF8）：蒸汽成为画面里最亮的大面积元素，
+     *      符合"水汽受光散射 / 锅炉房里蒸汽是最亮的东西"的直觉。
+     *      亮度定在 215 而不是 196：196 会和 ICE(203) 撞车（两者都是淡蓝白，
+     *      色相也近），往上顶到 215 后与 SAND(188)/ICE(203)/SNOW(231) 都拉开 ≥12。
+     *   ③ heatTint='white'：热蒸汽向白推（更亮），与烤热石壁向橙推分道扬镳。
+     * 代价（已知、已接受）：alpha 0.92 后蒸汽在近黑背景上基本不透明，
+     * "半透明"与"看得见"在本渲染模型里是同一个旋钮，二者不可兼得 —— 取"看得见"，
+     * "轻盈感"改由高明度 + 冷白 + 逐帧抖动闪动表达。详见 docs/art/steam-visibility.md §5。 */
     [23, 'STEAM', '水蒸气', 'gas', 'gas', 0.6, 1, 0.95, 2010, 0.06, null,
       0, null, null, null, null, null, 100, 'WATER', 0, -1, null, 1.00, null,/* 删去 lifetime=600 强制转水：消亡只由 §7.2 冷凝(T<100)+顶部逸出决定 */
-      '#C8D2DC', '#E6EDF4', '#9AA6B4', 'no', 0.50, true, true, null, false, 'gas'],
+      '#E2EDF8', '#F8FCFF', '#B4C8DC', 'no', 0.92, true, true, null, false, 'gas', 'white'],
 
+    /* 烟：旧值 alpha 0.60 / base #444B56 合成后亮度 50，与背景(15)只差 35，几乎看不见。
+     * 提亮到 ~72（仍明显暗于石头 125，保持"烟是暗的"这一读法），并 heatTint='hold'
+     * —— 烟受热不变亮，否则会被读成飞散的火星。 */
     [24, 'SMOKE', '烟', 'gas', 'gas', 0.5, 1, 0.90, 1005, 0.06, null,
       0, null, null, null, null, null, null, null, 0, 300, 'AIR', 1.00, null,
-      '#444B56', '#5E6673', '#2C313A', 'no', 0.60, true, true, null, false, 'gas'],
+      '#4E5663', '#68717F', '#333A44', 'no', 0.80, true, true, null, false, 'gas', 'hold'],
 
     [25, 'FIRE', '火', 'gas', 'gas', 0.3, 1, 0.80, 1100, 0.10, null,
       0, null, null, null, null, null, null, null, 0, 40, 'SMOKE', 0.50, null,
       '#FFB020', '#FFD64A', '#E24A0E', 'strong', 0.95, true, true, null, false, 'gas'],
 
+    /* 瓦斯：alpha 0.35 时合成亮度仅 77，与背景(15)差 62 但被石头(91~163)完全包住。
+     * 提 alpha 到 0.80 + 略提基色 → 合成亮度 ≈165，落在石头(125)与蒸汽(197)之间，
+     * 靠硫黄色相与两者区分（可燃气必须看得见，否则玩家不知道自己在点火）。 */
     [26, 'GAS', '瓦斯', 'gas', 'gas', 0.7, 1, 0.95, 2200, 0.06, null,
       0.40, 540, null, null, null, null, null, null, 0, -1, null, 1.00, null,
-      '#CBCB78', '#E8E8A8', '#9E9E4C', 'no', 0.35, true, true, null, false, 'gas'],
+      '#D2D489', '#ECEEB4', '#A6A85E', 'no', 0.80, true, true, null, false, 'gas', 'white'],
 
     [27, 'CLONE', '克隆体', 'static', 'solid', 2000, 0, 0, 2000, 0.15, 3.0,
       0, null, null, null, null, null, null, null, 0, -1, null, 0, null,
@@ -181,6 +215,7 @@
       windFactor: d[22], repose: d[23],
       base: d[24], light: d[25], dark: d[26], emissive: d[27], alpha: d[28],
       dither: d[29], anim: d[30], pattern: d[31], marker: d[32],
+      heatTint: d[34] || 'warm',
       colorIndex: d[0],
       baseInt: hexToInt(d[24]), lightInt: hexToInt(d[25]), darkInt: hexToInt(d[26])
     };

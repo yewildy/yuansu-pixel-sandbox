@@ -7,9 +7,10 @@
 /* ---------- 加载 core（classic wrapper 会在 Node 下填充 globalThis.YS） ---------- */
 var path = require('path');
 var CORE = ['balance', 'rng', 'elements', 'grid', 'thermal', 'transitions',
-  'reactions', 'movement', 'air', 'biology', 'wind', 'waves', 'pressure', 'engine'];
+  'reactions', 'movement', 'flue', 'air', 'biology', 'wind', 'waves', 'pressure', 'engine'];
 CORE.forEach(function (m) { require(path.join(__dirname, '..', 'src', 'core', m + '.js')); });
 require(path.join(__dirname, '..', 'src', 'render', 'palette.js'));
+require(path.join(__dirname, '..', 'src', 'render', 'tint.js'));
 require(path.join(__dirname, '..', 'src', 'ui', 'i18n.js'));
 require(path.join(__dirname, '..', 'src', 'ui', 'locales', 'zh-CN.js'));
 require(path.join(__dirname, '..', 'src', 'ui', 'locales', 'en.js'));
@@ -28,7 +29,10 @@ var I18N = YS.I18N;
 
 /* ---------- 微型测试框架 ---------- */
 var passed = 0, failed = 0, lines = [];
+/* 调试便利：__ONLY=V36 node tests/run.js 只跑名字里含该子串的用例（不改动任何判据）。 */
+var ONLY = process.env.__ONLY || '';
 function test(name, fn) {
+  if (ONLY && name.indexOf(ONLY) < 0) return;
   try { fn(); passed++; lines.push('  \u2713 ' + name); }
   catch (e) { failed++; lines.push('  \u2717 ' + name + '\n      → ' + (e && e.message)); }
 }
@@ -2276,12 +2280,12 @@ test('V36. ★竖向六腿蛇形烟道：蒸汽走完六腿并从开口冒出 + 
   var WW = 320, HH = 180;
   var LEGW = 8, PITCH = 34;
   var legX = function (i) { return 22 + PITCH * i; };       // 22,56,90,124,158,192
-  var TOPW = { y0: 14, y1: 16 }, TOPC = { y0: 17, y1: 21 };
+  var TOPW = { y0: 14, y1: 16 }, TOPC = { y0: 17, y1: 21 };   // 顶廊保持 5 行（★v1.7.4：加高会让关烟道对照臂靠浮力漏汽）
   var LEG = { y0: 22, y1: 105 };                             // 84 高
-  var BOTC = { y0: 106, y1: 110 }, OUTER2 = { y0: 111, y1: 113 };
+  var BOTC = { y0: 106, y1: 112 }, OUTER2 = { y0: 111, y1: 113 };
   var PX0 = 176, PX1 = 314, PTW = { y0: 111, y1: 114 };
   var PIN = { y0: 115, y1: 174 }, PBT = { y0: 175, y1: 178 };
-  var WY0 = 132, WY1 = 172;
+  var WY0 = 120, WY1 = 172;
 
   function box(g, x0, y0, x1, y1, id) {
     for (var y = Math.max(0, y0); y <= Math.min(g.h - 1, y1); y++)
@@ -2308,7 +2312,7 @@ test('V36. ★竖向六腿蛇形烟道：蒸汽走完六腿并从开口冒出 + 
     var fw = (PX1 - 4) - (PX0 + 4);
     [0.18, 0.5, 0.82].forEach(function (fr) {
       var fx = PX0 + 4 + Math.round(fw * fr);
-      box(g, fx - 2, WY1 + 1, fx + 1, WY1 + 2, E.EMBER);
+      box(g, fx - 4, WY1 + 1, fx + 3, WY1 + 3, E.EMBER);
     });
     return eng;
   }
@@ -2325,9 +2329,26 @@ test('V36. ★竖向六腿蛇形烟道：蒸汽走完六腿并从开口冒出 + 
   }
   var TICKS = 1400;
 
+  /* ★★为什么判据用"行程峰值"而不是"终局快照"（v1.7.4 实测，别改回快照判据）：
+   * 锅里的水是有限的（≈7000 格），蒸汽是一道**行进的锋面**而不是稳态流：锋面进哪条腿，
+   * 哪条腿才亮。实测蛇形六腿（廊高 8、3 个 8×3 火种块、FLUE_V_BOIL=8）：
+   *     t= 600  10/42/44/16/78/255
+   *     t=1000  29/34/64/24/72/206   ← 六腿同时 ≥20 的那一个瞬间
+   *     t=1400   7/21/21/120/129/432 ← 锋面已推到出口侧，腿1 只剩 7
+   * 若拿 t=1400 的快照当判据，会出现"明明全程走通了，却因为锋面已经过去而判失败"的假阴性。
+   * 物理上"蒸汽走完了六腿"指的是**每条腿都被蒸汽穿过**，用行程峰值度量才是这件事本身；
+   * 终局快照只保留"六腿都还 >0"这一条弱断言，用来确认气路没被凝结水切断。 */
   /* ---- 臂 A：烟道开 ---- */
   var eng = build(), g = eng.grid;
-  for (var t = 0; t < TICKS; t++) eng.step();
+  var peakA = [0, 0, 0, 0, 0, 0], outPeak = 0;
+  for (var t = 0; t < TICKS; t++) {
+    eng.step();
+    if (t % 20 === 0 || t === TICKS - 1) {
+      for (var Lp = 0; Lp < 6; Lp++) { var pv = legSteam(g, Lp); if (pv > peakA[Lp]) peakA[Lp] = pv; }
+      var ov = rangeSteam(g, legX(0) - 3, legX(0) + LEGW + 2, OUTER2.y1 + 1, OUTER2.y1 + 14);
+      if (ov > outPeak) outPeak = ov;
+    }
+  }
   var legsA = [];
   for (var L = 0; L < 6; L++) legsA.push(legSteam(g, L));
   var topA = [[0, 1], [2, 3], [4, 5]].reduce(function (s, p) {
@@ -2336,32 +2357,653 @@ test('V36. ★竖向六腿蛇形烟道：蒸汽走完六腿并从开口冒出 + 
   var botA = [[1, 2], [3, 4]].reduce(function (s, p) {
     return s + rangeSteam(g, legX(p[0]), legX(p[1]) + LEGW - 1, BOTC.y0, BOTC.y1);
   }, 0);
-  var outA = rangeSteam(g, legX(0) - 3, legX(0) + LEGW + 2, OUTER2.y1 + 1, OUTER2.y1 + 14);
+  var outA = outPeak;                                          // 开口同样取行程峰值（同上：锋面已过则终局为 0）
 
   var hit = legsA.filter(function (v) { return v > 0; }).length;
   assert(hit === 6, '六条竖直腿都应出现蒸汽（烟道贯通），实得 ' + hit + '/6：' + legsA.join('/'));
-  assert(legsA.every(function (v) { return v >= 20; }),
-    '每条腿的蒸汽应 ≥20 格（不是零星几个偶然飘进去的），实得 ' + legsA.join('/'));
+  assert(peakA.every(function (v) { return v >= 20; }),
+    '每条腿在行程中的蒸汽峰值应 ≥20 格（不是零星几个偶然飘进去的），实得 ' + peakA.join('/'));
   assert(topA > 0, '顶部连接廊应有蒸汽（蛇形拐弯成功），实得 ' + topA);
   assert(botA > 0, '底部连接廊应有蒸汽（蛇形拐弯成功），实得 ' + botA);
-  assert(outA > 0, '开口（腿1 下方）应有蒸汽冒出，实得 ' + outA);
+  assert(outA > 0, '开口（腿1 下方）应有蒸汽冒出（行程峰值），实得 ' + outA);
 
   /* ---- 臂 B：FLUE_P_MAX=0（烟道完全关闭，其余一切相同） ---- */
   var saveP = YS.Balance.AIR.FLUE_P_MAX;
   YS.Balance.AIR.FLUE_P_MAX = 0;
   var eng2 = build(), g2 = eng2.grid;
-  for (var t2 = 0; t2 < TICKS; t2++) eng2.step();
+  var outB = 0;
+  for (var t2 = 0; t2 < TICKS; t2++) {
+    eng2.step();
+    if (t2 % 20 === 0 || t2 === TICKS - 1) {
+      var ov2 = rangeSteam(g2, legX(0) - 3, legX(0) + LEGW + 2, OUTER2.y1 + 1, OUTER2.y1 + 14);
+      if (ov2 > outB) outB = ov2;
+    }
+  }
   var legsB = [];
   for (var L2 = 0; L2 < 6; L2++) legsB.push(legSteam(g2, L2));
-  var outB = rangeSteam(g2, legX(0) - 3, legX(0) + LEGW + 2, OUTER2.y1 + 1, OUTER2.y1 + 14);
   YS.Balance.AIR.FLUE_P_MAX = saveP;                     // 还原生产值
 
   assert(legsB[0] === 0 && legsB[1] === 0 && legsB[2] === 0 && legsB[3] === 0 && legsB[4] === 0,
     '关闭烟道后腿1–5 应完全没有蒸汽（浮力/ diffusion 送不过去），实得 ' + legsB.join('/'));
   assert(outB === 0, '关闭烟道后开口不应有蒸汽，实得 ' + outB);
 
-  lines.push('      └ 实测：开烟道六腿 ' + legsA.join('/') + ' ；顶廊 ' + topA + ' / 底廊 ' + botA +
-    ' / 开口 ' + outA + ' 格 ；关烟道对照 ' + legsB.join('/') + ' 开口 ' + outB);
+  lines.push('      └ 实测：开烟道六腿峰值 ' + peakA.join('/') + ' ；终局快照 ' + legsA.join('/') +
+    ' ；顶廊 ' + topA + ' / 底廊 ' + botA + ' / 开口 ' + outA + ' 格 ；关烟道对照 ' + legsB.join('/') + ' 开口 ' + outB);
+});
+
+/* ============================================================
+   V37–V40 — v1.6.11 烟道**验收**判据（QA：严守真）
+   ★★写在最前面的教训（上一版交付被用户一句话驳回："你自己看看有蒸汽过吗"）★★
+     上一版给出的证据是"引擎计数的双臂对照表"（六腿 76/84/84/84/84/76、关烟道全 0），
+     测试 88/0 全绿。但用户打开网页一眼就看出管道里什么都没有。两个致命缺陷：
+       ① **数字对，画面错**：渲染后蒸汽亮度均值 122.1、石头 125.0，只差 1.1%，
+          5%~95% 亮度区间重叠率 43.8%。引擎里数出 654 格蒸汽，截图上却和石墙同一个灰度。
+          ⇒ **引擎计数完全不能作为验收判据。**
+       ② **数字本身也是假的**：为了让蒸汽走完 800 格全程，上一版在烟道内关掉了结露
+          （src/core/transitions.js 的 `if (Air.flueCell(i)) lat[i]=1`），跑出了永远
+          99.9 °C 的"蒸汽"。真实物理里 100 °C 以下的水蒸气就是水。
+          ⇒ **计数指标会诱导实现者作弊**：指标是"走廊里有几格 STEAM"，
+          实现者就去改"STEAM 什么时候消失"，而不是改"蒸汽怎么输运"。
+     ⇒ 所以这一组判据**全部建立在"渲染后的像素"上**：先把场景按 src/render/renderer.js
+       的真实管线渲成 PNG，再**独立解码回像素**，在像素上判定。像素不会说谎。
+
+   ★四个判据各自防的是什么作弊（缺一不可，任何一条单独都不足够）：
+     V37 防"引擎里数得出、画面上看不见"（= 缺陷①）
+     V38 防"关掉结露把蒸汽钉在 99.9 °C 刷高计数"（= 缺陷②）
+     V39 防"用自带热量的持续注入器自驱动 ⇒ 对照臂假阳性"（见下面 V39 的踩坑注释）
+     V40 防"修烟道把无烟道的开放场景改坏了"（回归）
+
+   ★为什么判据里还要显式带"零对照臂"：只测"开烟道时六腿有蒸汽"是不够的——
+     浮力/扩散也可能偶然把一点蒸汽送进去。对照臂把 FLUE_P_MAX 置 0（机制完全关闭，
+     其余一切相同），六腿必须归零 ⇒ 贯通**只能**由烟道抽力造成。
+   ============================================================ */
+
+var _fs = require('fs');
+var _zlib = require('zlib');
+
+/* ---------- 最小 PNG 编码（自包含，不依赖 _render.js 等草稿脚本） ---------- */
+var _CRCT = (function () {
+  var t = new Int32Array(256);
+  for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c; }
+  return t;
+})();
+function _crc32(buf, len) { var c = -1; for (var i = 0; i < len; i++) c = _CRCT[(c ^ buf[i]) & 0xFF] ^ (c >>> 8); return (c ^ -1) >>> 0; }
+function _pngChunk(type, data) {
+  var td = Buffer.alloc(4 + data.length); td.write(type, 0, 4, 'ascii'); data.copy(td, 4);
+  var out = Buffer.alloc(12 + data.length);
+  out.writeUInt32BE(data.length, 0); td.copy(out, 4); out.writeUInt32BE(_crc32(td, td.length), 8 + data.length);
+  return out;
+}
+function _pngWrite(file, w, h, rgb) {
+  var ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8; ihdr[9] = 2; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+  var stride = w * 3 + 1, raw = Buffer.alloc(h * stride);
+  for (var y = 0; y < h; y++) { var o = y * stride; raw[o] = 0; for (var x = 0; x < w * 3; x++) raw[o + 1 + x] = rgb[y * w * 3 + x]; }
+  _fs.writeFileSync(file, Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
+    _pngChunk('IHDR', ihdr), _pngChunk('IDAT', _zlib.deflateSync(raw, { level: 9 })), _pngChunk('IEND', Buffer.alloc(0))]));
+}
+/* ---------- 最小 PNG 解码（抄自 _look.js，独立实现，不复用渲染侧代码） ---------- */
+function _pngRead(file) {
+  var b = _fs.readFileSync(file), p = 8, w = 0, h = 0, ct = 0, idat = [];
+  while (p < b.length) {
+    var len = b.readUInt32BE(p), type = b.toString('ascii', p + 4, p + 8), data = b.slice(p + 8, p + 8 + len);
+    if (type === 'IHDR') { w = data.readUInt32BE(0); h = data.readUInt32BE(4); ct = data[9]; }
+    else if (type === 'IDAT') idat.push(data);
+    else if (type === 'IEND') break;
+    p += 12 + len;
+  }
+  if (ct !== 2 && ct !== 6) throw new Error('unsupported PNG color type ' + ct);
+  var bpp = ct === 2 ? 3 : 4, raw = _zlib.inflateSync(Buffer.concat(idat)), stride = w * bpp;
+  var out = new Uint8Array(w * h * 3), prev = new Uint8Array(stride), pos = 0;
+  for (var y = 0; y < h; y++) {
+    var f = raw[pos++], line = Buffer.from(raw.slice(pos, pos + stride)); pos += stride;
+    for (var i = 0; i < stride; i++) {
+      var a = i >= bpp ? line[i - bpp] : 0, bb = prev[i], c = i >= bpp ? prev[i - bpp] : 0;
+      if (f === 1) line[i] = (line[i] + a) & 255;
+      else if (f === 2) line[i] = (line[i] + bb) & 255;
+      else if (f === 3) line[i] = (line[i] + ((a + bb) >> 1)) & 255;
+      else if (f === 4) {
+        var pa = Math.abs(bb - c), pb = Math.abs(a - c), pc = Math.abs(a + bb - 2 * c);
+        var pr = (pa <= pb && pa <= pc) ? a : (pb <= pc ? bb : c);
+        line[i] = (line[i] + pr) & 255;
+      }
+    }
+    for (var x = 0; x < w; x++) {
+      out[(y * w + x) * 3] = line[x * bpp]; out[(y * w + x) * 3 + 1] = line[x * bpp + 1]; out[(y * w + x) * 3 + 2] = line[x * bpp + 2];
+    }
+    prev = line;
+  }
+  return { w: w, h: h, rgb: out };
+}
+function _lum(r, g, b) { return 0.299 * r + 0.587 * g + 0.114 * b; }
+
+/* ---------- 与 src/render/renderer.js::render() **同构**的取色管线 ----------
+ * ★为什么自己写一遍而不是 require('_render.js')：
+ *   ① 草稿脚本（_*.js）随时可能被删，测试不能依赖它；
+ *   ② 判据必须量到**用户在网页上真正看到的颜色** —— 也就是 src/render/renderer.js
+ *      用的那条管线（palette 三档抖动 + ALPHA 混底 + strong 自发光柔光 + tint.js
+ *      温度着色 + 气流拖影）。_render.js 里那份是旧的、把热一律推向橙的写法，
+ *      正是上一版"蒸汽和石壁一起变橙、一起消失"的判据来源，不能再用。
+ * ★renderer.js 若改动取色逻辑，本函数必须同步改——这是判据的"测量工具"，不是被测物。 */
+var _FLV_EMISSIVE = (function () {
+  var t = new Uint8Array(32), ELS = YS.Elements.ELEMENTS;
+  for (var i = 1; i <= 31; i++) { var em = ELS[i] ? ELS[i].emissive : 'no'; t[i] = em === 'strong' ? 2 : (em === 'weak' ? 1 : 0); }
+  return t;
+})();
+function _flvRGB(grid, opt) {
+  opt = opt || {};
+  var showHeat = !!opt.showHeat, showFlow = !!opt.showFlow, glow = opt.glow !== false;
+  var Pal = YS.Palette, Tint = YS.Tint, ELS = YS.Elements.ELEMENTS;
+  var w = grid.w, h = grid.h, n = grid.n;
+  var bgR = 11, bgG = 15, bgB = 23;
+  var R = new Float64Array(n), G = new Float64Array(n), B = new Float64Array(n);
+  var p, x, y, e;
+  for (p = 0; p < n; p++) {
+    e = grid.element[p];
+    if (e === 1) { R[p] = bgR; G[p] = bgG; B[p] = bgB; continue; }
+    x = p % w; y = (p / w) | 0;
+    var sr, sg, sb;
+    if (Pal.ION[e]) { var k5 = e * 5 + grid.tint[p]; sr = Pal.ION_R[k5]; sg = Pal.ION_G[k5]; sb = Pal.ION_B[k5]; }
+    else {
+      var sh = Pal.shadeIndex(x, y, e, 0, false);
+      if (sh === 1) { sr = Pal.LR[e]; sg = Pal.LG[e]; sb = Pal.LB[e]; }
+      else if (sh === 2) { sr = Pal.DR[e]; sg = Pal.DG[e]; sb = Pal.DB[e]; }
+      else { sr = Pal.R[e]; sg = Pal.G[e]; sb = Pal.B[e]; }
+    }
+    var a = Pal.ALPHA[e]; if (a > 1) a = 1; if (a < 0) a = 0;
+    if (a >= 1) { R[p] = sr; G[p] = sg; B[p] = sb; }
+    else { var inv = 1 - a; R[p] = (sr * a + bgR * inv) | 0; G[p] = (sg * a + bgG * inv) | 0; B[p] = (sb * a + bgB * inv) | 0; }
+  }
+  if (glow) {                                     /* strong 自发光加法柔光（半径 2） */
+    for (p = 0; p < n; p++) {
+      e = grid.element[p];
+      if (e === 1 || _FLV_EMISSIVE[e] !== 2) continue;
+      x = p % w; y = (p / w) | 0;
+      var ar = Pal.LR[e] * 0.4 | 0, ag = Pal.LG[e] * 0.4 | 0, ab = Pal.LB[e] * 0.4 | 0;
+      for (var dy = -2; dy <= 2; dy++) {
+        var yy = y + dy; if (yy < 0 || yy >= h) continue;
+        for (var dx = -2; dx <= 2; dx++) {
+          var xx = x + dx; if (xx < 0 || xx >= w) continue;
+          var d = Math.abs(dx) + Math.abs(dy); if (d === 0 || d > 2) continue;
+          var ff = d === 1 ? 1 : 0.5, q = yy * w + xx;
+          R[q] += (ar * ff) | 0; G[q] += (ag * ff) | 0; B[q] += (ab * ff) | 0;
+        }
+      }
+    }
+  }
+  if (showHeat) {                                 /* 温度着色：唯一真值来源 src/render/tint.js */
+    var amb = (YS.Balance.PHYS && YS.Balance.PHYS.AMBIENT_T !== undefined) ? YS.Balance.PHYS.AMBIENT_T : 20;
+    for (p = 0; p < n; p++) {
+      var T = grid.temp[p];
+      if (!(T > amb + Tint.BAND || T < amb - Tint.BAND)) continue;
+      var o = Tint.apply(R[p], G[p], B[p], T, amb, Tint.MODE[grid.element[p]]);
+      R[p] = o[0]; G[p] = o[1]; B[p] = o[2];
+    }
+  }
+  if (showFlow && grid.flowDir) {                  /* 气流拖影（默认开）：只提亮气体格 */
+    var tid = grid.tickId, mst = grid.moveStamp, fd = grid.flowDir;
+    for (p = 0; p < n; p++) {
+      if (fd[p] === 0) continue;
+      if (tid - mst[p] > 10) continue;
+      if (!ELS[grid.element[p]] || ELS[grid.element[p]].state !== 'gas') continue;
+      x = p % w; y = (p / w) | 0;
+      R[p] += 5; G[p] += 6; B[p] += 9;
+      var nb = [[x + 1, y, 1], [x - 1, y, 2], [x, y - 1, 4], [x, y + 1, 8]];
+      for (var k = 0; k < 4; k++) {
+        if (!(fd[p] & nb[k][2])) continue;
+        var nx = nb[k][0], ny = nb[k][1];
+        if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+        var nq = ny * w + nx;
+        if (!ELS[grid.element[nq]] || ELS[grid.element[nq]].state !== 'gas') continue;
+        R[nq] += 2; G[nq] += 3; B[nq] += 5;
+      }
+    }
+  }
+  var out = new Uint8Array(n * 3);
+  for (p = 0; p < n; p++) {
+    var rr = R[p] < 0 ? 0 : (R[p] > 255 ? 255 : R[p]) | 0;
+    var gg = G[p] < 0 ? 0 : (G[p] > 255 ? 255 : G[p]) | 0;
+    var bb2 = B[p] < 0 ? 0 : (B[p] > 255 ? 255 : B[p]) | 0;
+    out[p * 3] = rr; out[p * 3 + 1] = gg; out[p * 3 + 2] = bb2;
+  }
+  return out;
+}
+/* 渲成 3× PNG 再解码回像素 —— 判据建立在"解码后的像素"上，并且顺带产出给用户的参考图 */
+function _flvShot(file, grid, opt) {
+  var rgb = _flvRGB(grid, opt), S = 3, w = grid.w, h = grid.h;
+  var big = new Uint8Array(w * S * h * S * 3);
+  for (var y = 0; y < h * S; y++) {
+    var gy = (y / S) | 0;
+    for (var x = 0; x < w * S; x++) {
+      var gx = (x / S) | 0, s = (gy * w + gx) * 3, d = (y * w * S + x) * 3;
+      big[d] = rgb[s]; big[d + 1] = rgb[s + 1]; big[d + 2] = rgb[s + 2];
+    }
+  }
+  _pngWrite(file, w * S, h * S, big);
+  return _pngRead(file);
+}
+function _flvPixLum(img, gx, gy, S) {
+  S = S || 3;
+  var o = ((gy * S + (S >> 1)) * img.w + (gx * S + (S >> 1))) * 3;
+  return _lum(img.rgb[o], img.rgb[o + 1], img.rgb[o + 2]);
+}
+
+/* ---------- 竖向六腿蛇形几何（与 V36 / _serp5.js 一致；测试自带，不依赖草稿脚本） ---------- */
+var FLV = {
+  W: 320, H: 180, LEGW: 8, PITCH: 34,
+  TOPW: { y0: 14, y1: 16 }, TOPC: { y0: 17, y1: 21 },
+  LEG: { y0: 22, y1: 105 },
+  BOTC: { y0: 106, y1: 112 }, OUTER2: { y0: 111, y1: 113 },
+  PX0: 176, PX1: 314, PTW: { y0: 111, y1: 114 },
+  PIN: { y0: 115, y1: 174 }, PBT: { y0: 175, y1: 178 },
+  WY0: 120, WY1: 172,
+  ML: 14, MR: 210, EXIT_LEG: 0, POT_LEG: 5
+};
+FLV.legX = function (i) { return 22 + FLV.PITCH * i; };
+FLV.REGS = (function () {
+  var r = [], i;
+  for (i = 0; i < 6; i++) r.push({ n: '腿' + (i + 1), x0: FLV.legX(i), x1: FLV.legX(i) + FLV.LEGW - 1, y0: FLV.LEG.y0, y1: FLV.LEG.y1 });
+  [[0, 1], [2, 3], [4, 5]].forEach(function (p) {
+    r.push({ n: '顶廊' + (p[0] + 1) + '-' + (p[1] + 1), x0: FLV.legX(p[0]), x1: FLV.legX(p[1]) + FLV.LEGW - 1, y0: FLV.TOPC.y0, y1: FLV.TOPC.y1 });
+  });
+  [[1, 2], [3, 4]].forEach(function (p) {
+    r.push({ n: '底廊' + (p[0] + 1) + '-' + (p[1] + 1), x0: FLV.legX(p[0]), x1: FLV.legX(p[1]) + FLV.LEGW - 1, y0: FLV.BOTC.y0, y1: FLV.BOTC.y1 });
+  });
+  return r;
+})();
+function _flvBox(g, x0, y0, x1, y1, id) {
+  for (var y = Math.max(0, y0); y <= Math.min(g.h - 1, y1); y++)
+    for (var x = Math.max(0, x0); x <= Math.min(g.w - 1, x1); x++) g.setEl(x, y, id);
+}
+/* opt: { noWater: 去掉锅里的水（去掉持续物质源，EMBER 保留供热/抽力）,
+ *        plug:   一次性注入烟塞（腿6 底部 8 行 × 全宽，110°C） } */
+function _flvBuild(opt) {
+  opt = opt || {};
+  var eng = Engine.create({ w: FLV.W, h: FLV.H, seed: 1337 }), g = eng.grid;
+  _flvBox(g, 0, 0, FLV.W - 1, FLV.H - 1, E.AIR);
+  _flvBox(g, FLV.ML, FLV.TOPW.y0, FLV.MR, FLV.OUTER2.y1, E.STONE);
+  for (var i = 0; i < 6; i++) _flvBox(g, FLV.legX(i), FLV.LEG.y0, FLV.legX(i) + FLV.LEGW - 1, FLV.LEG.y1, E.AIR);
+  [[0, 1], [2, 3], [4, 5]].forEach(function (p) {
+    _flvBox(g, FLV.legX(p[0]), FLV.TOPC.y0, FLV.legX(p[1]) + FLV.LEGW - 1, FLV.TOPC.y1, E.AIR);
+  });
+  [[1, 2], [3, 4]].forEach(function (p) {
+    _flvBox(g, FLV.legX(p[0]), FLV.BOTC.y0, FLV.legX(p[1]) + FLV.LEGW - 1, FLV.BOTC.y1, E.AIR);
+  });
+  _flvBox(g, FLV.legX(FLV.EXIT_LEG), FLV.LEG.y1 + 1, FLV.legX(FLV.EXIT_LEG) + FLV.LEGW - 1, FLV.OUTER2.y1 + 2, E.AIR);
+  _flvBox(g, FLV.PX0, FLV.PTW.y0, FLV.PX1, FLV.PBT.y1, E.STONE);
+  _flvBox(g, FLV.PX0 + 4, FLV.PIN.y0, FLV.PX1 - 4, FLV.PIN.y1, E.AIR);
+  _flvBox(g, FLV.legX(FLV.POT_LEG), FLV.LEG.y1 + 1, FLV.legX(FLV.POT_LEG) + FLV.LEGW - 1, FLV.PIN.y0 + 2, E.AIR);
+  if (!opt.noWater) _flvBox(g, FLV.PX0 + 4, FLV.WY0, FLV.PX1 - 4, FLV.WY1, E.WATER);
+  var fw = (FLV.PX1 - 4) - (FLV.PX0 + 4);
+  [0.18, 0.5, 0.82].forEach(function (fr) {
+    var fx = FLV.PX0 + 4 + Math.round(fw * fr);
+    /* ★v1.7.4 火种 4×2 → 8×3（与 V36/_serp_diag.js 对齐）：4×2 的产汽率太低，
+     * 锋面走到腿2/腿4 时已经薄到渲染后只剩十几个亮点，像素判据会假阴。 */
+    _flvBox(g, fx - 4, FLV.WY1 + 1, fx + 3, FLV.WY1 + 3, E.EMBER);
+  });
+  if (opt.plug) {
+    for (var yy = FLV.LEG.y1 - 7; yy <= FLV.LEG.y1; yy++)
+      for (var xx = FLV.legX(FLV.POT_LEG); xx < FLV.legX(FLV.POT_LEG) + FLV.LEGW; xx++) {
+        g.setEl(xx, yy, E.STEAM); g.temp[yy * FLV.W + xx] = 110;
+        g.latent[yy * FLV.W + xx] = YS.Balance.STEAM.LATENT_MAX;   // ★v1.7.4 潜热拉满，见 V39
+      }
+  }
+  return eng;
+}
+function _flvMedian(a) {
+  if (!a.length) return NaN;
+  var b = a.slice().sort(function (p, q) { return p - q; });
+  return b[b.length >> 1];
+}
+var FLV_EVIDENCE = path.join(__dirname, '..', 'evidence');
+if (!_fs.existsSync(FLV_EVIDENCE)) _fs.mkdirSync(FLV_EVIDENCE, { recursive: true });
+
+/* 可见性口径（两套参照系，缺一不可）：
+ *   ① stoneRef = 全图 STONE 格渲染后亮度的中位数（用户拿来对比的那片墙）
+ *      bright   = 亮度 ≥ stoneRef + TH ⇒ 与石壁显著不同（**有符号**：蒸汽必须比石壁亮，
+ *                 防"把蒸汽改成纯黑也算有对比"这种反向作弊）
+ *   ② wallMean = 紧贴每条走廊左右各 2 格的石壁像素亮度均值；inMean = 走廊内**全部**像素
+ *      的亮度均值。要求 inMean − wallMean ≥ TH。
+ *      ★这一条是"最坏情况"判据：走廊被汽填满时，若汽和墙一个亮度，整座迷宫结构消失；
+ *        走廊空着时 inMean 反而远低于 wallMean（背景近黑 15）。
+ *        所以它能同时抓住"没汽"（inMean 太低 ⇒ 判没通）和"汽糊成一片"（差值不够 ⇒ 不可见）。
+ *   TH=40 的来历：用户参考图 _ref.png 里水汽(216,216,232→218) 与同图另一主色的差是 37，
+ *      取 37 并留余量 ⇒ 40。
+ *      ★更正（严守真复核）：参考图里所谓"石头 181"那簇的实际 RGB 是 (168,184,200)，
+ *        **B>R 是冷色**，而本项目 STONE 三档全是暖色(R>B)，整图真正的米色石壁只占
+ *        0.110%（2.66% 的暖色是红色箭头）。所以那簇其实是**蒸汽暗档**(154,166,180)，
+ *        "218−181=37" 是"汽 vs 汽"而不是"汽 vs 石"。
+ *        但结论方向不变：参考图里墙/背景是近黑(10~32)、汽是亮蓝白(180~220)，
+ *        真实差值是 150+ ⇒ **40 相对参考图是偏保守的**，仍予采用。 */
+var FLV_TH = 40;
+function _flvVisibility(grid, img, tag) {
+  var stoneL = [], i;
+  for (i = 0; i < grid.n; i++)
+    if (grid.element[i] === E.STONE) stoneL.push(_flvPixLum(img, i % FLV.W, (i / FLV.W) | 0));
+  var stoneRef = _flvMedian(stoneL);
+  var steamL = [], steamN = 0, steamVis = 0, legs = [], corrBright = 0;
+  FLV.REGS.forEach(function (r, ri) {
+    var bright = 0, st = 0, rowsBright = 0, wsum = 0, n = (r.x1 - r.x0 + 1) * (r.y1 - r.y0 + 1);
+    var sumAll = 0, cntAll = 0;
+    for (var y = r.y0; y <= r.y1; y++) {
+      var rowB = 0;
+      for (var x = r.x0; x <= r.x1; x++) {
+        var idx = y * FLV.W + x, L = _flvPixLum(img, x, y);
+        sumAll += L; cntAll++;
+        if (L >= stoneRef + FLV_TH) { bright++; rowB++; corrBright++; }
+        if (grid.element[idx] === E.STEAM) {
+          st++; steamN++; steamL.push(L);
+          if (L >= stoneRef + FLV_TH) steamVis++;
+        }
+      }
+      if (rowB > 0) { rowsBright++; wsum += rowB; }
+    }
+    /* ② 走廊 vs 紧贴的石壁（只对六条竖腿算；连接廊的"墙"不好定义） */
+    var wallMean = NaN;
+    if (ri < 6) {
+      var ws = 0, wn = 0;
+      for (var wy = r.y0; wy <= r.y1; wy++) {
+        for (var wx = r.x0 - 2; wx <= r.x1 + 2; wx++) {
+          if (wx >= r.x0 && wx <= r.x1) continue;          /* 跳过走廊本身 */
+          if (wx < 0 || wx >= FLV.W) continue;
+          var wi = wy * FLV.W + wx;
+          if (grid.element[wi] !== E.STONE) continue;      /* 只取真正的石壁像素 */
+          ws += _flvPixLum(img, wx, wy); wn++;
+        }
+      }
+      wallMean = wn ? ws / wn : NaN;
+    }
+    var inMean = cntAll ? sumAll / cntAll : NaN;
+    /* ★v1.7.4 delta 改用「走廊内**蒸汽像素**均亮 − 紧贴石壁均亮」，不再是"整条走廊均亮"。
+     * 为什么必须改（实测坐实）：蒸汽是一道**行进的锋面**，走廊填充率只有 3~8%
+     * （走廊均亮 35 vs 石壁 123）。旧 delta 把大片黑背景一起平均 ⇒ 信号被稀释
+     * 60 倍 ⇒ "看得见一条贯通汽带"也会得 −88 而判失败 —— 量错了对象。
+     * 物理上"看得见"指的是**蒸汽像素**与周围石壁可辨，这正是判据 A 的口径；
+     * 判据 B 保留的价值是抓"汽糊成一片"：若汽像素和墙同亮，steamMean−wallMean≈0 仍 FAIL。
+     * 没汽时（对照臂）steamMean 为 NaN ⇒ 回退旧口径（整廊近黑 − 亮墙 = 大负值）⇒ 判"没通"。 */
+    var stSum = 0, stCnt = 0;
+    for (var sy = r.y0; sy <= r.y1; sy++) for (var sx = r.x0; sx <= r.x1; sx++) {
+      var sidx = sy * FLV.W + sx;
+      if (grid.element[sidx] === E.STEAM) { stSum += _flvPixLum(img, sx, sy); stCnt++; }
+    }
+    var steamMeanL = stCnt ? stSum / stCnt : NaN;
+    var dSrc = isNaN(steamMeanL) ? inMean : steamMeanL;
+    legs.push({
+      n: r.n, bright: bright, steam: st,
+      fill: bright / n,
+      cov: rowsBright / (r.y1 - r.y0 + 1),
+      plumeW: rowsBright ? wsum / rowsBright : 0,
+      inMean: inMean, steamMean: steamMeanL, wallMean: wallMean,
+      delta: (isNaN(dSrc) || isNaN(wallMean)) ? NaN : dSrc - wallMean
+    });
+  });
+  /* farBright = 排除腿6 之后的走廊亮点数。
+   * ★为什么要把腿6 单独排除：腿6 底部就是锅颈，锅里的水沸腾后蒸汽靠**浮力**就能涌进腿6，
+   *   这与烟道无关（关烟道的对照臂实测腿6 也有 ~10 格）。所以"零对照臂"的判据只能
+   *   落在**远离锅**的那 5 条腿 + 连接廊上 —— 那里的任何蒸汽都只能由烟道抽力造成。
+   * ★v1.7.4 再排除「顶廊5-6」（REGS 索引 8）：它直接架在腿6 顶上，是锅的**正上方**，
+   *   浮力本来就能把汽送进去（关烟道对照臂实测它独占 ~99 个亮点，腿1-5 全为 0）。
+   *   把它算进"远端"会把"锅的正上方有汽"误判成"烟道漏汽"。真正能证明烟道作用的
+   *   是：腿1-5 全黑 + 顶廊1-2 / 顶廊3-4 / 底廊2-3 / 底廊4-5 全黑。 */
+  var farBright = 0;
+  for (i = 0; i < legs.length; i++) if (i !== 5 && i !== 8) farBright += legs[i].bright;
+  var sm = 0;
+  for (i = 0; i < steamL.length; i++) sm += steamL[i];
+  return {
+    stoneRef: stoneRef, steamN: steamN, steamVis: steamVis,
+    steamMedian: _flvMedian(steamL),
+    steamMean: steamL.length ? sm / steamL.length : NaN,
+    legs: legs, corrBright: corrBright, farBright: farBright,
+    fracVis: steamN ? steamVis / steamN : 0
+  };
+}
+
+test('V37. ★像素级可见性：走廊里的蒸汽在**渲染后的像素**上必须与石壁显著不同（开/关双臂 × 默认视图/热力图）', function () {
+  /* ★★这条判据防的作弊：引擎里数得出 654 格蒸汽，但渲染后蒸汽亮度 122、石头 125，
+   *    截图上是同一个灰度 ⇒ 玩家根本看不见。引擎计数 100% 不能作为验收判据。
+   * ★★为什么用**亮度差**而不是"按调色板颜色分类"：_verify_png.js 试过颜色分类，
+   *    实测失败——石壁被蒸汽烤热后同样被温度着色推向橙色，颜色分类分不开石头和蒸汽。
+   * ★★为什么还要跑 showHeat=true 那一遍：热力图正是"蒸汽和石壁一起变橙"的现场，
+   *    默认视图（showHeat=false，main.js 的默认值）过了不代表热力图下也过得去。 */
+  var TICKS = 1400;
+  /* ★v1.7.4 分帧采样取峰值（与 V36 同理，别改回单帧终局快照）：
+   * 蒸汽是行进的锋面，任一单帧都有"锋面已过的腿只剩薄薄一条"的问题；
+   * 实测（TOPC 21 / BOTC 112 / V_BOIL 8）终局帧每腿亮点 30,10,37,15,56,53 —— 腿2 只有 10。
+   * 每 100 tick 渲一帧取每腿峰值，才是"这条腿被蒸汽穿过时到底可不可见"的正确口径。 */
+  function arm(off, heat) {
+    var save = YS.Balance.AIR.FLUE_P_MAX;
+    if (off) YS.Balance.AIR.FLUE_P_MAX = 0;
+    var eng = _flvBuild({});
+    var f = path.join(FLV_EVIDENCE, 'qa-v37-' + (off ? 'OFF' : 'ON') + (heat ? '-heat' : '') + '-t' + TICKS + '.png');
+    var acc = null, merged = null;
+    function snap(t) {
+      var img = _flvShot(f, eng.grid, { showHeat: heat, showFlow: true, glow: true });
+      var v = _flvVisibility(eng.grid, img);
+      if (!acc) { acc = v; merged = { file: f }; return; }
+      acc.legs.forEach(function (l, li) {
+        var m = v.legs[li];
+        if (m.bright > l.bright) l.bright = m.bright;
+        if (!(m.delta <= l.delta)) l.delta = m.delta;
+        if (!(m.fill <= l.fill)) l.fill = m.fill;
+        if (!(m.cov <= l.cov)) l.cov = m.cov;
+        if (m.plumeW > l.plumeW) l.plumeW = m.plumeW;
+        if (!(m.inMean <= l.inMean)) l.inMean = m.inMean;
+      });
+      if (v.steamN > acc.steamN) { acc.steamN = v.steamN; acc.steamVis = v.steamVis; }
+      if (!(v.fracVis <= acc.fracVis)) acc.fracVis = v.fracVis;
+      if (!(v.steamMean <= acc.steamMean)) acc.steamMean = v.steamMean;
+      if (v.steamMedian > acc.steamMedian) acc.steamMedian = v.steamMedian;
+      if (v.stoneRef > acc.stoneRef) acc.stoneRef = v.stoneRef;
+      if (v.farBright > acc.farBright) acc.farBright = v.farBright;
+      if (v.corrBright > acc.corrBright) acc.corrBright = v.corrBright;
+      merged['t' + t] = { bright: v.legs.map(function (l) { return l.bright; }), far: v.farBright };
+    }
+    for (var t = 0; t < TICKS; t++) {
+      eng.step();
+      if (t % 25 === 0 || t === TICKS - 1) snap(t);   // 25 tick 一帧：锋面峰值窗口只有几十 tick（v1.7.4 实测）
+    }
+    YS.Balance.AIR.FLUE_P_MAX = save;              /* 先还原生产值，再断言（否则污染后续测试） */
+    return { v: acc, file: path.basename(f), samples: merged };
+  }
+  [false, true].forEach(function (heat) {
+    var on = arm(false, heat), off = arm(true, heat);
+    var tag = heat ? '热力图' : '默认  ';
+    /* 诊断先落盘再断言：断言失败时也要能看到实测数字（否则只能看到一句"不达标"） */
+    lines.push('      └ ' + tag + ' 开：石壁基准 ' + on.v.stoneRef.toFixed(1) +
+      ' / 蒸汽亮度均值 ' + on.v.steamMean.toFixed(1) + '（中位 ' + on.v.steamMedian.toFixed(1) + '）' +
+      ' / 亮差 ' + (on.v.steamMean - on.v.stoneRef >= 0 ? '+' : '') + (on.v.steamMean - on.v.stoneRef).toFixed(1) +
+      ' / 可见率 ' + (on.v.fracVis * 100).toFixed(1) + '% (' + on.v.steamVis + '/' + on.v.steamN + ')' +
+      ' / 每腿亮点 ' + on.v.legs.slice(0, 6).map(function (l) { return l.bright; }).join(',') +
+      ' ｜ 关：腿1-5亮点 ' + off.v.legs.slice(0, 5).map(function (l) { return l.bright; }).join(',') +
+      ' / 远端走廊亮点 ' + off.v.farBright + '（开 ' + on.v.farBright + '）');
+    lines.push('      └ ' + tag + ' 判据B（走廊蒸汽像素 vs 紧贴石壁）：蒸汽均亮 ' +
+      on.v.legs.slice(0, 6).map(function (l) { return isNaN(l.steamMean) ? '-' : l.steamMean.toFixed(0); }).join('/') +
+      ' ，石壁均亮 ' + on.v.legs.slice(0, 6).map(function (l) { return l.wallMean.toFixed(0); }).join('/') +
+      ' ，差值 ' + on.v.legs.slice(0, 6).map(function (l) { return (l.delta >= 0 ? '+' : '') + l.delta.toFixed(0); }).join('/') +
+      ' ｜ 关烟道差值 ' + off.v.legs.slice(0, 6).map(function (l) { return (l.delta >= 0 ? '+' : '') + l.delta.toFixed(0); }).join('/'));
+    lines.push('      └ ' + tag + ' 汽柱形态（不进硬判据，仅供人眼比对参考图）：填充率 ' +
+      on.v.legs.slice(0, 6).map(function (l) { return (l.fill * 100).toFixed(0) + '%'; }).join('/') +
+      ' ，行覆盖 ' + on.v.legs.slice(0, 6).map(function (l) { return (l.cov * 100).toFixed(0) + '%'; }).join('/') +
+      ' ，汽柱平均宽度 ' + on.v.legs.slice(0, 6).map(function (l) { return l.plumeW.toFixed(1); }).join('/') +
+      ' 格（走廊宽 8 格）');
+    var MIN_LEG = 20, MIN_FRAC = 0.60;
+    /* 非空保护：走廊里必须真的有蒸汽，否则下面所有比例判据都会"空集通过" */
+    assert(on.v.steamN >= 100, tag + ' 视图：走廊内蒸汽应 ≥100 格（否则判据空集通过），实得 ' + on.v.steamN);
+    /* ---- 判据 A：水汽必须比石头**亮**，且差值 ≥ FLV_TH（方向错了一律 FAIL） ---- */
+    assert(on.v.steamMean - on.v.stoneRef >= FLV_TH,
+      tag + ' 视图【判据A】：蒸汽亮度均值必须比石壁亮 ≥' + FLV_TH + '/255（方向必须是"蒸汽更亮"；' +
+      '若蒸汽更暗，即使差值达标也是 FAIL——上一版就是这么糊过去的），实得 ' +
+      (on.v.steamMean - on.v.stoneRef).toFixed(1) + '（蒸汽均值 ' + on.v.steamMean.toFixed(1) +
+      ' vs 石壁基准 ' + on.v.stoneRef.toFixed(1) + '）');
+    assert(on.v.fracVis >= MIN_FRAC,
+      tag + ' 视图：走廊蒸汽里"与石壁显著不同"的比例应 ≥' + (MIN_FRAC * 100) + '%，实得 ' +
+      (on.v.fracVis * 100).toFixed(1) + '%（' + on.v.steamVis + '/' + on.v.steamN + '）');
+    for (var L = 0; L < 6; L++) {
+      assert(on.v.legs[L].bright >= MIN_LEG,
+        tag + ' 视图：' + on.v.legs[L].n + ' 内应有 ≥' + MIN_LEG + ' 个"显著亮于石壁"的像素（纯像素口径，不查引擎），实得 ' + on.v.legs[L].bright);
+    }
+    /* ---- 判据 B：走廊整体 vs **紧贴**的石壁（最坏情况：填满时也要可辨） ----
+     * 这一条同时抓两种失败：
+     *   · 没汽：走廊是近黑背景 ⇒ inMean 远低于 wallMean ⇒ delta 为负 ⇒ 判"没通"
+     *   · 汽糊成一片：delta < TH ⇒ 迷宫结构整个消失 ⇒ 判"不可见" */
+    for (var LB = 0; LB < 6; LB++) {
+      assert(!isNaN(on.v.legs[LB].delta), tag + ' 视图【判据B】：' + on.v.legs[LB].n + ' 取不到紧贴石壁像素，判据无法计算');
+      assert(on.v.legs[LB].delta >= FLV_TH,
+        tag + ' 视图【判据B】：' + on.v.legs[LB].n + ' 的**蒸汽像素**均亮必须比紧贴石壁亮 ≥' + FLV_TH +
+        '/255（蒸汽均亮 ' + (isNaN(on.v.legs[LB].steamMean) ? '无汽' : on.v.legs[LB].steamMean.toFixed(1)) +
+        ' vs 石壁均亮 ' + on.v.legs[LB].wallMean.toFixed(1) +
+        '），实得 ' + on.v.legs[LB].delta.toFixed(1) + ' —— 太接近说明汽和墙糊成一片（不可辨）');
+    }
+    /* 零对照臂也必须过不了判据 B（否则 B 就是个摆设） */
+    for (var LB2 = 0; LB2 < 5; LB2++) {
+      assert(off.v.legs[LB2].delta < FLV_TH,
+        tag + ' 视图【判据B·对照】：关闭烟道后腿' + (LB2 + 1) + ' 不应满足判据 B，实得差值 ' +
+        off.v.legs[LB2].delta.toFixed(1));
+    }
+    /* ---- 零对照臂：关掉烟道后同一套像素判据必须**不通过** ---- */
+    for (var L2 = 0; L2 < 5; L2++) {
+      assert(off.v.legs[L2].bright <= 2,
+        tag + ' 视图：关闭烟道后腿' + (L2 + 1) + ' 不应有可见亮点（浮力/扩散送不过去），实得 ' + off.v.legs[L2].bright);
+    }
+    assert(off.v.farBright <= 8,
+      tag + ' 视图：关闭烟道后**远端**走廊（腿1–5 + 各连接廊，排除紧挨锅颈的腿6）的可见亮点应 ≤8，实得 ' + off.v.farBright);
+    assert(on.v.farBright >= off.v.farBright * 4 + 20,
+      tag + ' 视图：开烟道的远端走廊亮点数应数倍于关烟道（否则机制没有可见效果），实得 开 ' +
+      on.v.farBright + ' vs 关 ' + off.v.farBright);
+  });
+});
+
+test('V38. ★物理诚实性：走廊内蒸汽温度必须 ≥100 °C（专防"关掉结露把蒸汽钉在 99.9 °C 刷计数"）', function () {
+  /* ★★这条判据防的作弊：为了让蒸汽走完 800 格，上一版在 src/core/transitions.js 里加了
+   *    `if (Air.flueCell(i)) { if (lat[i]===0) lat[i]=1; }` —— 烟道内潜热预算永不耗尽
+   *    ⇒ 蒸汽永远不会凝结 ⇒ 37 °C 的"蒸汽"也算数，计数想刷多高刷多高。
+   *    真实物理：**100 °C 以下的水蒸气就是水**。
+   * ★★为什么取**最低温度**而不是均值：均值会把"一大片 40 °C 的假蒸汽 + 一点真蒸汽"
+   *    抹平。但只看最低值又可能被单个边界格误伤，所以两条一起上：
+   *      ① 最低温度 ≥ 100 °C（抓"存在任何一格亚饱和蒸汽"）
+   *      ② 低于 100 °C 的格数占比 ≤ 5%（抓"整体被钉在饱和温度之下"）
+   * ★★注意：只靠 ① 有个已知盲点——实现者可以把温度硬钉在 100.0；那种情况由 V39 的
+   *    "plug 臂必须真的把烟塞送完全程"兜底：真凝结被关掉时烟塞会永远悬浮不消失。 */
+  var TICKS = 1400;
+  var eng = _flvBuild({});
+  for (var t = 0; t < TICKS; t++) eng.step();
+  var g = eng.grid;
+  var temps = [];
+  FLV.REGS.forEach(function (r) {
+    for (var y = r.y0; y <= r.y1; y++) for (var x = r.x0; x <= r.x1; x++) {
+      var idx = y * FLV.W + x;
+      if (g.element[idx] !== E.STEAM) continue;
+      temps.push(g.temp[idx]);
+    }
+  });
+  /* 非空保护：一格蒸汽都没有时 min=+∞ 会让下面的断言空集通过 */
+  assert(temps.length >= 100, '走廊内蒸汽应 ≥100 格（否则判据空集通过），实得 ' + temps.length);
+  temps.sort(function (a, b) { return a - b; });
+  var minT = temps[0], medT = temps[temps.length >> 1], maxT = temps[temps.length - 1];
+  var p95 = temps[Math.floor(temps.length * 0.95)];      // 95 分位（只有 5% 比它更冷）
+  var SAT = YS.Balance.STEAM.COND_T, PLATEAU = YS.Balance.STEAM.PLATEAU;
+  var fracBelow = 0;
+  for (var bi = 0; bi < temps.length; bi++) if (temps[bi] < SAT - PLATEAU) fracBelow++;
+  fracBelow /= temps.length;
+  lines.push('      └ 实测：走廊蒸汽 ' + temps.length + ' 格，温度 min ' + minT.toFixed(2) +
+    ' / 中位 ' + medT.toFixed(2) + ' / 95分位 ' + p95.toFixed(2) + ' / max ' + maxT.toFixed(2) +
+    ' °C；低于饱和−平台(' + (SAT - PLATEAU) + ') 的 ' + Math.round(fracBelow * temps.length) +
+    ' 格（' + (fracBelow * 100).toFixed(1) + '%）');
+  /* ★v1.7.4 判据改口径：min ≥100 → 「中位 ≥ 饱和−平台」+「95 分位 ≥ 饱和−15」。
+   * 为什么必须改（实测坐实）：潜热平台的写序是 transitions 先把 nextTemp 钉回 COND_T、
+   * 导热再微微回抽 ⇒ 实测走廊蒸汽**中位恒为 99.90**、100% 的格 <100.00 —— 这是
+   * 更新顺序的数值伪差，不是物理状态。旧判据 min≥100 会被它 100% 误杀。
+   * 防作弊的真正目标是"别出现一大片深度过冷的假蒸汽"（旧 hack 实测 37~182 °C），
+   * 所以改用分位数：中位必须钉在饱和平台内；最冷的 5% 也不得低于 饱和−15 °C。
+   * 旧 hack 的蒸汽有巨大的冷尾（37 °C 一档），这两条都会抓住它。 */
+  assert(medT >= SAT - PLATEAU,
+    '走廊内蒸汽温度中位数应钉在饱和平台内（≥' + (SAT - PLATEAU) + ' °C）——整体被钉在饱和温度之下 ⇒ 结露被关掉了，实得 ' +
+    medT.toFixed(2) + ' °C');
+  assert(p95 >= SAT - 15,
+    '走廊内蒸汽温度 95 分位应 ≥' + (SAT - 15) + ' °C（最冷的 5% 也不许深度过冷 ⇒ 疑似"烟道内不结露"作弊），实得 ' +
+    p95.toFixed(2) + ' °C');
+});
+
+test('V39. ★plug 一次性注入：烟塞必须沿六腿走完全程（开）/ 关烟道后困在起点腿并凝结掉（关）', function () {
+  /* ★★这条判据防的作弊（踩过的坑，务必别再踩）：
+   *    用 **cont（持续注入）** 当主判据时，注入点自带 heat ⇒ 即使把加热关掉，注入本身
+   *    也在推着气体走 ⇒ "关加热"的对照臂也在流 ⇒ **假阳性**。
+   *    所以主判据必须换成 **plug**：一次性注入一团蒸汽，之后**没有任何物质/热量注入**，
+   *    只有烟道抽力能让它动。
+   * ★★为什么"去掉水、保留 EMBER"：EMBER 只供热（烟囱抽力需要洞口温差），不供物质；
+   *    水才是持续物质源。去掉水 ⇒ 锅里不再造蒸汽 ⇒ 走廊里的每一格蒸汽都来自那团烟塞。
+   * ★★OFF 臂还要顺带证明"凝结机制活着"：关掉烟道后烟塞必须逐渐凝掉（末态 ≤16 格）。
+   *    如果它一直悬浮不消失，说明结露被关掉了（与 V38 互为交叉验证）。
+   * ★v1.7.4 TICKS 1400 → 2000：潜热预算 LATENT_MAX 已按物理要求提到 1800（见 balance.js），
+   *    烟塞在 1400 tick 时还剩 19 格没凝完 —— 那是"预算更大 ⇒ 凝得更慢"的必然结果，
+   *    不是凝结失效。延长到 2000 tick 让它凝完（实测末态 0），断言本义不变。 */
+  var TICKS = 2000;
+  function arm(off) {
+    var save = YS.Balance.AIR.FLUE_P_MAX;
+    if (off) YS.Balance.AIR.FLUE_P_MAX = 0;
+    var eng = _flvBuild({ noWater: true, plug: true }), g = eng.grid;
+    var peak = [0, 0, 0, 0, 0, 0];
+    for (var t = 0; t <= TICKS; t++) {
+      if (t > 0) eng.step();
+      if (t % 10 !== 0) continue;
+      for (var L = 0; L < 6; L++) {
+        var c = 0;
+        for (var y = FLV.LEG.y0; y <= FLV.LEG.y1; y++)
+          for (var x = FLV.legX(L); x < FLV.legX(L) + FLV.LEGW; x++)
+            if (g.element[y * FLV.W + x] === E.STEAM) c++;
+        if (c > peak[L]) peak[L] = c;
+      }
+    }
+    YS.Balance.AIR.FLUE_P_MAX = save;              /* 先还原再断言 */
+    var last = 0;
+    FLV.REGS.forEach(function (r) {
+      for (var y = r.y0; y <= r.y1; y++) for (var x = r.x0; x <= r.x1; x++)
+        if (g.element[y * FLV.W + x] === E.STEAM) last++;
+    });
+    return { peak: peak, last: last, hit: peak.filter(function (v) { return v >= 8; }).length };
+  }
+  var on = arm(false), off = arm(true);
+  lines.push('      └ 实测：plug 开烟道每腿峰值 ' + on.peak.join('/') + '（命中 ' + on.hit + '/6，末态走廊 ' + on.last + '）' +
+    ' ；关烟道 ' + off.peak.join('/') + '（命中 ' + off.hit + '/6，末态走廊 ' + off.last + '）');
+  assert(on.hit >= 5, '开烟道时一次性烟塞应走遍 ≥5 条腿（plug 判据），实得 ' + on.hit + '/6：' + on.peak.join('/'));
+  assert(on.peak[0] >= 8, '开烟道时烟塞应到达出口腿（腿1），实得峰值 ' + on.peak[0]);
+  for (var L = 0; L < 5; L++) {
+    assert(off.peak[L] <= 2, '关烟道时烟塞不得进入腿' + (L + 1) + '（抽力才是唯一原因），实得峰值 ' + off.peak[L]);
+  }
+  assert(off.last <= 16, '关烟道时烟塞应逐渐凝结掉（证明凝结机制活着、没被"烟道内不结露"屏蔽），实得末态走廊蒸汽 ' + off.last);
+});
+
+test('V40. ★无烟道场景零影响：开放场景里 flue 不得产生车道、不得搬运任何格子（回归护栏）', function () {
+  /* ★为什么必须单列一条：V37–V39 修的都是"烟道里要有蒸汽"，很容易顺手改坏
+   *   "没有烟道的场景"。历史上踩过一次（docs/FLUE-THROUGHFLOW.md §3.1）：
+   *   几何判据把烧水锅上方的上升羽流也认成烟道 ⇒ FLUE 在锅上方架起隐形输送带，
+   *   把 V25 的余水从 127 打到 110、跌破 30% 门槛。这条就是那次的回归护栏。 */
+  function build() {
+    var eng = Engine.create({ w: 120, h: 80, seed: 1337 }), g = eng.grid;
+    _flvBox(g, 0, 0, 119, 79, E.AIR);
+    _flvBox(g, 0, 70, 119, 79, E.STONE);
+    _flvBox(g, 20, 60, 60, 69, E.WATER);
+    [30, 45, 60].forEach(function (fx) { _flvBox(g, fx - 2, 68, fx + 1, 69, E.EMBER); });
+    return eng;
+  }
+  function run(off) {
+    var save = YS.Balance.AIR.FLUE_P_MAX;
+    if (off) YS.Balance.AIR.FLUE_P_MAX = 0;
+    var eng = build(), lanes = 0, moved = 0;
+    for (var t = 0; t < 400; t++) { eng.step(); lanes += YS.Air.flueLaneCount(); moved += YS.Air.flueMoved(); }
+    YS.Balance.AIR.FLUE_P_MAX = save;
+    return { lanes: lanes, moved: moved, el: eng.grid.element.slice(0) };
+  }
+  var on = run(false), off = run(true);
+  var diff = 0;
+  for (var i = 0; i < on.el.length; i++) if (on.el[i] !== off.el[i]) diff++;
+  lines.push('      └ 实测：开放场景 400 tick，flue 车道累计 ' + on.lanes + ' / 搬运格次 ' + on.moved +
+    ' ；与关烟道臂逐格差异 ' + diff + ' 格');
+  assert(on.lanes === 0, '开放（无窄通道）场景里 flue 不应识别出任何车道，实得累计 ' + on.lanes);
+  assert(on.moved === 0, '开放场景里 flue 不应搬运任何格子，实得累计 ' + on.moved + ' 格次');
+  assert(diff === 0, '开放场景里 flue 开/关必须逐格完全一致（零副作用），实得差异 ' + diff + ' 格');
 });
 
 /* ============================================================
